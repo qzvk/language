@@ -1,4 +1,4 @@
-use std::str::Chars;
+use std::str::CharIndices;
 
 pub type LexResult<'a> = (Result<TokenKind, Error>, TokenInfo<'a>);
 
@@ -59,15 +59,17 @@ pub fn lex(input: &str) -> impl Iterator<Item = LexResult> + '_ {
 }
 
 struct Lexer<'a> {
-    input: Chars<'a>,
+    string: &'a str,
+    chars: CharIndices<'a>,
     line: u32,
     column: u32,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(input: &'a str) -> Self {
+    pub fn new(string: &'a str) -> Self {
         Self {
-            input: input.chars(),
+            string,
+            chars: string.char_indices(),
             line: 0,
             column: 0,
         }
@@ -78,10 +80,13 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = LexResult<'a>;
 
     fn next(&mut self) -> Option<LexResult<'a>> {
-        let c = self.input.next()?;
+        let (index, c) = self.chars.next()?;
 
         let line = self.line;
         let column = self.column;
+        // TODO: Handle non-byte characters here.
+        let string = &self.string[index..index + 1];
+        let info = TokenInfo::new(line, column, string);
         self.column += 1;
 
         match c {
@@ -90,26 +95,28 @@ impl<'a> Iterator for Lexer<'a> {
                 self.column = 0;
                 self.next()
             }
-            '+' => Some((Ok(TokenKind::Plus), TokenInfo::new(line, column, "+"))),
-            '-' => Some((Ok(TokenKind::Minus), TokenInfo::new(line, column, "-"))),
-            '*' => Some((Ok(TokenKind::Asterisk), TokenInfo::new(line, column, "*"))),
-            '/' => Some((Ok(TokenKind::Slash), TokenInfo::new(line, column, "/"))),
-            ';' => Some((Ok(TokenKind::Semicolon), TokenInfo::new(line, column, ";"))),
-            '=' => Some((Ok(TokenKind::Equals), TokenInfo::new(line, column, "="))),
-            '(' => Some((Ok(TokenKind::OpenParen), TokenInfo::new(line, column, "("))),
-            ')' => Some((Ok(TokenKind::CloseParen), TokenInfo::new(line, column, ")"))),
+            '+' => Some((Ok(TokenKind::Plus), info)),
+            '-' => Some((Ok(TokenKind::Minus), info)),
+            '*' => Some((Ok(TokenKind::Asterisk), info)),
+            '/' => Some((Ok(TokenKind::Slash), info)),
+            ';' => Some((Ok(TokenKind::Semicolon), info)),
+            '=' => Some((Ok(TokenKind::Equals), info)),
+            '(' => Some((Ok(TokenKind::OpenParen), info)),
+            ')' => Some((Ok(TokenKind::CloseParen), info)),
             c if c.is_whitespace() => self.next(),
-            _ => None,
+            _ => Some((Err(Error::UnknownCharacter), info)),
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Error {}
+pub enum Error {
+    UnknownCharacter,
+}
 
 #[cfg(test)]
 mod tests {
-    use super::{lex, LexResult, TokenInfo, TokenKind};
+    use super::{lex, Error, LexResult, TokenInfo, TokenKind};
 
     #[test]
     fn can_lex_empty_string() {
@@ -170,5 +177,17 @@ mod tests {
     fn can_display_token_info() {
         assert_eq!("1:1 \"\"", TokenInfo::new(0, 0, "").to_string());
         assert_eq!("14:5 \"hello\"", TokenInfo::new(13, 4, "hello").to_string());
+    }
+
+    #[test]
+    fn unknown_characters_are_reported() {
+        const EXPECTED: &[LexResult] = &[
+            (Err(Error::UnknownCharacter), TokenInfo::new(0, 0, "%")),
+            (Err(Error::UnknownCharacter), TokenInfo::new(0, 1, "@")),
+            (Ok(TokenKind::Plus), TokenInfo::new(1, 0, "+")),
+            (Err(Error::UnknownCharacter), TokenInfo::new(1, 2, "$")),
+        ];
+        let actual: Vec<_> = lex("%@\n+ $\n").collect();
+        assert_eq!(EXPECTED, actual);
     }
 }
