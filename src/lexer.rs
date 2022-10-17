@@ -17,18 +17,6 @@ impl<'a> TokenInfo<'a> {
             source,
         }
     }
-
-    pub fn line(&self) -> u32 {
-        self.line
-    }
-
-    pub fn column(&self) -> u32 {
-        self.column
-    }
-
-    pub fn source(&self) -> &str {
-        self.source
-    }
 }
 
 impl<'a> std::fmt::Display for TokenInfo<'a> {
