@@ -31,6 +31,12 @@ impl<'a> TokenInfo<'a> {
     }
 }
 
+impl<'a> std::fmt::Display for TokenInfo<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{} {:?}", self.line, self.column, self.source)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
     Plus,
@@ -166,5 +172,11 @@ mod tests {
         assert_eq!("(equals)", TokenKind::Equals.to_string());
         assert_eq!("(open-paren)", TokenKind::OpenParen.to_string());
         assert_eq!("(close-paren)", TokenKind::CloseParen.to_string());
+    }
+
+    #[test]
+    fn can_display_token_info() {
+        assert_eq!("0:0 \"\"", TokenInfo::new(0, 0, "").to_string());
+        assert_eq!("13:4 \"hello\"", TokenInfo::new(13, 4, "hello").to_string());
     }
 }
