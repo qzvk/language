@@ -114,6 +114,17 @@ pub enum Error {
     UnknownCharacter,
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            Error::UnknownCharacter => "unknown character",
+        };
+        write!(f, "{string}")
+    }
+}
+
+impl std::error::Error for Error {}
+
 #[cfg(test)]
 mod tests {
     use super::{lex, Error, LexResult, TokenInfo, TokenKind};
@@ -189,5 +200,10 @@ mod tests {
         ];
         let actual: Vec<_> = lex("%@\n+ $\n").collect();
         assert_eq!(EXPECTED, actual);
+    }
+
+    #[test]
+    fn can_display_error() {
+        assert_eq!("unknown character", Error::UnknownCharacter.to_string());
     }
 }
