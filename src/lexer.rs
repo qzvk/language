@@ -43,6 +43,22 @@ pub enum TokenKind {
     CloseParen,
 }
 
+impl std::fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            TokenKind::Plus => "plus",
+            TokenKind::Minus => "minus",
+            TokenKind::Asterisk => "asterisk",
+            TokenKind::Slash => "slash",
+            TokenKind::Semicolon => "semicolon",
+            TokenKind::Equals => "equals",
+            TokenKind::OpenParen => "open-paren",
+            TokenKind::CloseParen => "close-paren",
+        };
+        write!(f, "({string})")
+    }
+}
+
 pub fn lex(input: &str) -> impl Iterator<Item = Token> + '_ {
     Lexer::new(input)
 }
@@ -138,5 +154,17 @@ mod tests {
         ];
         let output: Vec<_> = lex("+\n*\n\n   -\n").collect();
         assert_eq!(EXPECTED, output);
+    }
+
+    #[test]
+    fn can_display_token_kinds() {
+        assert_eq!("(plus)", TokenKind::Plus.to_string());
+        assert_eq!("(minus)", TokenKind::Minus.to_string());
+        assert_eq!("(asterisk)", TokenKind::Asterisk.to_string());
+        assert_eq!("(slash)", TokenKind::Slash.to_string());
+        assert_eq!("(semicolon)", TokenKind::Semicolon.to_string());
+        assert_eq!("(equals)", TokenKind::Equals.to_string());
+        assert_eq!("(open-paren)", TokenKind::OpenParen.to_string());
+        assert_eq!("(close-paren)", TokenKind::CloseParen.to_string());
     }
 }
