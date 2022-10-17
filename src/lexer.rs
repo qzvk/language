@@ -21,7 +21,8 @@ impl<'a> TokenInfo<'a> {
 
 impl<'a> std::fmt::Display for TokenInfo<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{} {:?}", self.line, self.column, self.source)
+        // Line and column numbers are 1-indexed, since they're for humans.
+        write!(f, "{}:{} {:?}", self.line + 1, self.column + 1, self.source)
     }
 }
 
@@ -164,7 +165,7 @@ mod tests {
 
     #[test]
     fn can_display_token_info() {
-        assert_eq!("0:0 \"\"", TokenInfo::new(0, 0, "").to_string());
-        assert_eq!("13:4 \"hello\"", TokenInfo::new(13, 4, "hello").to_string());
+        assert_eq!("1:1 \"\"", TokenInfo::new(0, 0, "").to_string());
+        assert_eq!("14:5 \"hello\"", TokenInfo::new(13, 4, "hello").to_string());
     }
 }
