@@ -37,6 +37,7 @@ pub enum TokenKind {
     OpenParen,
     CloseParen,
     Integer,
+    Ident,
 }
 
 impl std::fmt::Display for TokenKind {
@@ -51,6 +52,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::OpenParen => "open-paren",
             TokenKind::CloseParen => "close-paren",
             TokenKind::Integer => "integer",
+            TokenKind::Ident => "ident",
         };
         write!(f, "({string})")
     }
@@ -94,6 +96,24 @@ impl<'a> Lexer<'a> {
             }
         }
     }
+
+    fn ident(&mut self, line: u32, column: u32, start: usize) -> Option<LexResult<'a>> {
+        match self.chars.peek() {
+            Some(&(_, c)) if c.is_ascii_alphabetic() || c.is_ascii_digit() || c == '_' => {
+                self.chars.next();
+                self.column += 1;
+                self.ident(line, column, start)
+            }
+            Some(&(index, _)) => {
+                let info = TokenInfo::new(line, column, &self.string[start..index]);
+                Some((Ok(TokenKind::Ident), info))
+            }
+            None => {
+                let info = TokenInfo::new(line, column, &self.string[start..]);
+                Some((Ok(TokenKind::Ident), info))
+            }
+        }
+    }
 }
 
 impl<'a> Iterator for Lexer<'a> {
@@ -124,6 +144,7 @@ impl<'a> Iterator for Lexer<'a> {
             '(' => Some((Ok(TokenKind::OpenParen), info)),
             ')' => Some((Ok(TokenKind::CloseParen), info)),
             d if d.is_ascii_digit() => self.integer(line, column, index),
+            a if a.is_ascii_alphabetic() || a == '_' => self.ident(line, column, index),
             c if c.is_whitespace() => self.next(),
             _ => Some((Err(Error::UnknownCharacter), info)),
         }
@@ -204,6 +225,7 @@ mod tests {
         assert_eq!("(open-paren)", TokenKind::OpenParen.to_string());
         assert_eq!("(close-paren)", TokenKind::CloseParen.to_string());
         assert_eq!("(integer)", TokenKind::Integer.to_string());
+        assert_eq!("(ident)", TokenKind::Ident.to_string());
     }
 
     #[test]
@@ -239,6 +261,19 @@ mod tests {
             (Ok(TokenKind::Integer), TokenInfo::new(0, 9, "6789")),
             (Ok(TokenKind::Integer), TokenInfo::new(1, 1, "01234")),
             (Ok(TokenKind::Integer), TokenInfo::new(1, 7, "567890")),
+        ];
+        let actual: Vec<_> = lex(SOURCE).collect();
+        assert_eq!(EXPECTED, actual);
+    }
+
+    #[test]
+    fn can_lex_idents() {
+        const SOURCE: &str = "a helloEXAMPLE\n_5x\n wx_yz";
+        const EXPECTED: &[LexResult] = &[
+            (Ok(TokenKind::Ident), TokenInfo::new(0, 0, "a")),
+            (Ok(TokenKind::Ident), TokenInfo::new(0, 2, "helloEXAMPLE")),
+            (Ok(TokenKind::Ident), TokenInfo::new(1, 0, "_5x")),
+            (Ok(TokenKind::Ident), TokenInfo::new(2, 1, "wx_yz")),
         ];
         let actual: Vec<_> = lex(SOURCE).collect();
         assert_eq!(EXPECTED, actual);
