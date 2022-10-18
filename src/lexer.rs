@@ -1,4 +1,4 @@
-use std::str::CharIndices;
+use std::{iter::Peekable, str::CharIndices};
 
 pub type LexResult<'a> = (Result<TokenKind, Error>, TokenInfo<'a>);
 
@@ -36,6 +36,7 @@ pub enum TokenKind {
     Equals,
     OpenParen,
     CloseParen,
+    Integer,
 }
 
 impl std::fmt::Display for TokenKind {
@@ -49,6 +50,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Equals => "equals",
             TokenKind::OpenParen => "open-paren",
             TokenKind::CloseParen => "close-paren",
+            TokenKind::Integer => "integer",
         };
         write!(f, "({string})")
     }
@@ -60,7 +62,7 @@ pub fn lex(input: &str) -> impl Iterator<Item = LexResult> + '_ {
 
 struct Lexer<'a> {
     string: &'a str,
-    chars: CharIndices<'a>,
+    chars: Peekable<CharIndices<'a>>,
     line: u32,
     column: u32,
 }
@@ -69,9 +71,27 @@ impl<'a> Lexer<'a> {
     pub fn new(string: &'a str) -> Self {
         Self {
             string,
-            chars: string.char_indices(),
+            chars: string.char_indices().peekable(),
             line: 0,
             column: 0,
+        }
+    }
+
+    fn integer(&mut self, line: u32, column: u32, start: usize) -> Option<LexResult<'a>> {
+        match self.chars.peek() {
+            Some(&(_, c)) if c.is_ascii_digit() => {
+                self.chars.next();
+                self.column += 1;
+                self.integer(line, column, start)
+            }
+            Some(&(index, _)) => {
+                let info = TokenInfo::new(line, column, &self.string[start..index]);
+                Some((Ok(TokenKind::Integer), info))
+            }
+            None => {
+                let info = TokenInfo::new(line, column, &self.string[start..]);
+                Some((Ok(TokenKind::Integer), info))
+            }
         }
     }
 }
@@ -103,6 +123,7 @@ impl<'a> Iterator for Lexer<'a> {
             '=' => Some((Ok(TokenKind::Equals), info)),
             '(' => Some((Ok(TokenKind::OpenParen), info)),
             ')' => Some((Ok(TokenKind::CloseParen), info)),
+            d if d.is_ascii_digit() => self.integer(line, column, index),
             c if c.is_whitespace() => self.next(),
             _ => Some((Err(Error::UnknownCharacter), info)),
         }
@@ -182,6 +203,7 @@ mod tests {
         assert_eq!("(equals)", TokenKind::Equals.to_string());
         assert_eq!("(open-paren)", TokenKind::OpenParen.to_string());
         assert_eq!("(close-paren)", TokenKind::CloseParen.to_string());
+        assert_eq!("(integer)", TokenKind::Integer.to_string());
     }
 
     #[test]
@@ -205,5 +227,20 @@ mod tests {
     #[test]
     fn can_display_error() {
         assert_eq!("unknown character", Error::UnknownCharacter.to_string());
+    }
+
+    #[test]
+    fn can_lex_integers() {
+        const SOURCE: &str = "0 12 345 6789\n 01234 567890";
+        const EXPECTED: &[LexResult] = &[
+            (Ok(TokenKind::Integer), TokenInfo::new(0, 0, "0")),
+            (Ok(TokenKind::Integer), TokenInfo::new(0, 2, "12")),
+            (Ok(TokenKind::Integer), TokenInfo::new(0, 5, "345")),
+            (Ok(TokenKind::Integer), TokenInfo::new(0, 9, "6789")),
+            (Ok(TokenKind::Integer), TokenInfo::new(1, 1, "01234")),
+            (Ok(TokenKind::Integer), TokenInfo::new(1, 7, "567890")),
+        ];
+        let actual: Vec<_> = lex(SOURCE).collect();
+        assert_eq!(EXPECTED, actual);
     }
 }
