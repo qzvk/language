@@ -278,4 +278,38 @@ mod tests {
         let actual: Vec<_> = lex(SOURCE).collect();
         assert_eq!(EXPECTED, actual);
     }
+
+    #[test]
+    fn can_lex_short_example() {
+        const SOURCE: &str =
+            "applyTwice f x = f (f x);\nsquare n = n * n;\napplyTwice square (4 - 11)\n";
+        const EXPECTED: &[LexResult] = &[
+            (Ok(TokenKind::Ident), TokenInfo::new(0, 0, "applyTwice")),
+            (Ok(TokenKind::Ident), TokenInfo::new(0, 11, "f")),
+            (Ok(TokenKind::Ident), TokenInfo::new(0, 13, "x")),
+            (Ok(TokenKind::Equals), TokenInfo::new(0, 15, "=")),
+            (Ok(TokenKind::Ident), TokenInfo::new(0, 17, "f")),
+            (Ok(TokenKind::OpenParen), TokenInfo::new(0, 19, "(")),
+            (Ok(TokenKind::Ident), TokenInfo::new(0, 20, "f")),
+            (Ok(TokenKind::Ident), TokenInfo::new(0, 22, "x")),
+            (Ok(TokenKind::CloseParen), TokenInfo::new(0, 23, ")")),
+            (Ok(TokenKind::Semicolon), TokenInfo::new(0, 24, ";")),
+            (Ok(TokenKind::Ident), TokenInfo::new(1, 0, "square")),
+            (Ok(TokenKind::Ident), TokenInfo::new(1, 7, "n")),
+            (Ok(TokenKind::Equals), TokenInfo::new(1, 9, "=")),
+            (Ok(TokenKind::Ident), TokenInfo::new(1, 11, "n")),
+            (Ok(TokenKind::Asterisk), TokenInfo::new(1, 13, "*")),
+            (Ok(TokenKind::Ident), TokenInfo::new(1, 15, "n")),
+            (Ok(TokenKind::Semicolon), TokenInfo::new(1, 16, ";")),
+            (Ok(TokenKind::Ident), TokenInfo::new(2, 0, "applyTwice")),
+            (Ok(TokenKind::Ident), TokenInfo::new(2, 11, "square")),
+            (Ok(TokenKind::OpenParen), TokenInfo::new(2, 18, "(")),
+            (Ok(TokenKind::Integer), TokenInfo::new(2, 19, "4")),
+            (Ok(TokenKind::Minus), TokenInfo::new(2, 21, "-")),
+            (Ok(TokenKind::Integer), TokenInfo::new(2, 23, "11")),
+            (Ok(TokenKind::CloseParen), TokenInfo::new(2, 25, ")")),
+        ];
+        let actual: Vec<_> = lex(SOURCE).collect();
+        assert_eq!(EXPECTED, actual);
+    }
 }
