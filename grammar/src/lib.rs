@@ -36,8 +36,8 @@ impl<N, T> Grammar<N, T> {
     }
 
     /// A sorted, unique list of the grammar's rewrite rules.
-    pub fn rules(&self) -> impl Iterator<Item = &(N, Vec<Symbol<N, T>>)> {
-        self.rules.iter()
+    pub fn rules(&self) -> impl Iterator<Item = (&N, &[Symbol<N, T>])> {
+        self.rules.iter().map(|(l, r)| (l, r.as_ref()))
     }
 }
 
@@ -80,8 +80,8 @@ mod tests {
         let rules: Vec<_> = grammar.rules().collect();
         assert_eq!(
             vec![
-                &(Nonterminal::A, vec![Symbol::Terminal(Terminal::B)]),
-                &(Nonterminal::A, vec![Symbol::Terminal(Terminal::C)])
+                (&Nonterminal::A, [Symbol::Terminal(Terminal::B)].as_slice()),
+                (&Nonterminal::A, [Symbol::Terminal(Terminal::C)].as_slice()),
             ],
             rules
         );
