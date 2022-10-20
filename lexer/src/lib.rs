@@ -1,7 +1,16 @@
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+
+//! The lexer for a programming language. Recognizes `+`, `-`, `*`, `/`, `;`, `=`, `(`, `)`,
+//! integers `/[0-9]+/` and identifiers `/[a-zA-Z_][a-zA-Z0-9_]*/`.
+
 use std::{iter::Peekable, str::CharIndices};
 
+/// The type produced by the `lex` iterator. Contains either a token kind or a lex error,
+/// alongside position information.
 pub type LexResult<'a> = (Result<TokenKind, Error>, TokenInfo<'a>);
 
+/// Token (or lexical error) position information.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TokenInfo<'a> {
     line: u32,
@@ -10,6 +19,7 @@ pub struct TokenInfo<'a> {
 }
 
 impl<'a> TokenInfo<'a> {
+    /// Create new token info, with the given `line`, `column`, and string of associated `source`.
     pub const fn new(line: u32, column: u32, source: &'a str) -> Self {
         Self {
             line,
@@ -26,17 +36,37 @@ impl<'a> std::fmt::Display for TokenInfo<'a> {
     }
 }
 
+/// A kind of token producable by lexical analysis.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
+    /// A plus (`+`)
     Plus,
+
+    /// A minus (`-`)
     Minus,
+
+    /// An asterisk (`*`)
     Asterisk,
+
+    /// A slash (`/`)
     Slash,
+
+    /// A semicolon (`;`)
     Semicolon,
+
+    /// An equals (`=`)
     Equals,
+
+    /// An open parenthesis (`(`)
     OpenParen,
+
+    /// A close parenthesis (`)`)
     CloseParen,
+
+    /// An integer (`/[0-9+]/`)
     Integer,
+
+    /// An identifier (`/[a-zA-Z_][a-zA-Z0-9_]*/`)
     Ident,
 }
 
@@ -58,6 +88,7 @@ impl std::fmt::Display for TokenKind {
     }
 }
 
+/// Return an iterator over the tokens of `input`.
 pub fn lex(input: &str) -> impl Iterator<Item = LexResult> + '_ {
     Lexer::new(input)
 }
@@ -151,8 +182,10 @@ impl<'a> Iterator for Lexer<'a> {
     }
 }
 
+/// A lexical error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
+    /// An unknown character was found in the input string.
     UnknownCharacter,
 }
 
