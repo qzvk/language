@@ -70,6 +70,11 @@ impl Grammar {
             ));
         }
 
+        let epsilon_productions = self.epsilon_productions();
+        if !epsilon_productions.is_empty() {
+            return Err(Error::EpsilonProductions(epsilon_productions));
+        }
+
         Ok(ProperGrammar {})
     }
 
@@ -160,6 +165,23 @@ impl Grammar {
 
         (nonterminals, terminals)
     }
+
+    fn epsilon_productions(&self) -> Vec<Nonterminal> {
+        let mut nonterminals = Vec::new();
+
+        for (left, right) in &self.rules {
+            if !right.is_empty() {
+                continue; // Not an epsilon rule.
+            }
+
+            // This method of insertion keeps `nonterminals` sorted.
+            if let Err(index) = nonterminals.binary_search(left) {
+                nonterminals.insert(index, *left);
+            }
+        }
+
+        nonterminals
+    }
 }
 
 /// A rewrite rule of a context-free grammar.
@@ -185,11 +207,11 @@ impl<'a> GrammarRule<'a> {
 }
 
 /// A nonterminal symbol of a grammar.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Nonterminal(u32);
 
 /// A terminal symbol of a grammar.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Terminal(u32);
 
 /// A proper context-free grammar. See [`Grammar::validate`].
@@ -204,6 +226,9 @@ pub enum Error {
 
     /// One or more symbols are can not be produced by a derivation from the start symbol.
     UnreachableSymbols(Vec<Nonterminal>, Vec<Terminal>),
+
+    /// One or more nonterminals can derive empty strings.
+    EpsilonProductions(Vec<Nonterminal>),
 }
 
 #[derive(Debug)]
@@ -232,20 +257,18 @@ mod tests {
         assert_ne!(c, d);
 
         assert_eq!(0, grammar.rule_count());
-        grammar.add_rule(a); // Epsilon rule.
-        assert_eq!(1, grammar.rule_count());
 
         grammar.add_rule(a).terminal(c);
-        assert_eq!(2, grammar.rule_count());
+        assert_eq!(1, grammar.rule_count());
 
         grammar.add_rule(b).terminal(d);
-        assert_eq!(3, grammar.rule_count());
+        assert_eq!(2, grammar.rule_count());
 
         grammar.add_rule(a).terminal(d).nonterminal(b).terminal(c);
-        assert_eq!(4, grammar.rule_count());
+        assert_eq!(3, grammar.rule_count());
 
         grammar.add_rule(start).nonterminal(a);
-        assert_eq!(5, grammar.rule_count());
+        assert_eq!(4, grammar.rule_count());
 
         let _proper_grammar: ProperGrammar = grammar.validate().unwrap();
     }
@@ -289,5 +312,35 @@ mod tests {
 
         let error: Error = grammar.validate().unwrap_err();
         assert_eq!(Error::UnreachableSymbols(vec![y], vec![b, c]), error);
+    }
+
+    #[test]
+    fn epsilon_productions_are_not_proper() {
+        let (start, mut grammar): (Nonterminal, Grammar) = Grammar::new();
+        // S -> X
+        // S -> Y
+        // S -> Z
+        // X ->
+        // X -> a X
+        // Y -> b Z c
+        // Z ->
+
+        let x = grammar.add_nonterminal();
+        let y = grammar.add_nonterminal();
+        let z = grammar.add_nonterminal();
+        let a = grammar.add_terminal();
+        let b = grammar.add_terminal();
+        let c = grammar.add_terminal();
+
+        grammar.add_rule(start).nonterminal(x);
+        grammar.add_rule(start).nonterminal(y);
+        grammar.add_rule(start).nonterminal(z);
+        grammar.add_rule(z);
+        grammar.add_rule(x);
+        grammar.add_rule(x).terminal(a).nonterminal(x);
+        grammar.add_rule(y).terminal(b).nonterminal(z).terminal(c);
+
+        let error: Error = grammar.validate().unwrap_err();
+        assert_eq!(Error::EpsilonProductions(vec![x, z]), error);
     }
 }
