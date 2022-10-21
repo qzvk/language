@@ -4,6 +4,7 @@
 //! Library for validating grammars and generating parse tables.
 
 /// A context-free grammar.
+#[derive(Debug)]
 pub struct Grammar {
     nonterminal_count: u32,
     terminal_count: u32,
@@ -16,7 +17,7 @@ impl Grammar {
         let start = Nonterminal(0);
 
         let grammar = Self {
-            nonterminal_count: 0,
+            nonterminal_count: 1, // the start nonterminal is pre-defined
             terminal_count: 0,
             rules: Vec::new(),
         };
@@ -26,14 +27,16 @@ impl Grammar {
 
     /// Add a new, unique nonterminal to the grammar.
     pub fn add_nonterminal(&mut self) -> Nonterminal {
+        let index = self.nonterminal_count;
         self.nonterminal_count += 1;
-        Nonterminal(self.nonterminal_count)
+        Nonterminal(index)
     }
 
     /// Add a new, unique terminal to the grammar.
     pub fn add_terminal(&mut self) -> Terminal {
+        let index = self.terminal_count;
         self.terminal_count += 1;
-        Terminal(self.terminal_count)
+        Terminal(index)
     }
 
     /// Add a rule to the grammar.
@@ -54,7 +57,24 @@ impl Grammar {
 
     /// If the grammar is proper, return `Ok`, otherwise return `Err`.
     pub fn validate(self) -> Result<ProperGrammar, Error> {
-        let mut productive = vec![false; self.nonterminal_count as usize + 1];
+        let unproductive_nonterminals = self.unproductive_nonterminals();
+        if !unproductive_nonterminals.is_empty() {
+            return Err(Error::UnproductiveNonterminals(unproductive_nonterminals));
+        }
+
+        let (unreachable_nonterminals, unreachable_terminals) = self.unreachable_symbols();
+        if !unreachable_nonterminals.is_empty() || !unreachable_terminals.is_empty() {
+            return Err(Error::UnreachableSymbols(
+                unreachable_nonterminals,
+                unreachable_terminals,
+            ));
+        }
+
+        Ok(ProperGrammar {})
+    }
+
+    fn unproductive_nonterminals(&self) -> Vec<Nonterminal> {
+        let mut productive = vec![false; self.nonterminal_count as usize];
 
         loop {
             let mut changed = false;
@@ -77,7 +97,7 @@ impl Grammar {
                 }
             }
 
-            if changed {
+            if !changed {
                 break;
             }
         }
@@ -89,11 +109,56 @@ impl Grammar {
             }
         }
 
-        if unproductive_nonterminals.is_empty() {
-            Ok(ProperGrammar {})
-        } else {
-            Err(Error::UnproductiveNonterminals(unproductive_nonterminals))
+        unproductive_nonterminals
+    }
+
+    fn unreachable_symbols(&self) -> (Vec<Nonterminal>, Vec<Terminal>) {
+        let mut reachable_nonterminal = vec![false; self.nonterminal_count as usize];
+        let mut reachable_terminal = vec![false; self.terminal_count as usize];
+
+        reachable_nonterminal[0] = true; // start nonterminal is reachable by definition
+
+        loop {
+            let mut changed = false;
+
+            for (left, right) in &self.rules {
+                if !reachable_nonterminal[left.0 as usize] {
+                    continue;
+                }
+
+                for r in right {
+                    let reachability = match r {
+                        Symbol::Nonterminal(n) => &mut reachable_nonterminal[n.0 as usize],
+                        Symbol::Terminal(t) => &mut reachable_terminal[t.0 as usize],
+                    };
+
+                    if !(*reachability) {
+                        *reachability = true;
+                        changed = true;
+                    }
+                }
+            }
+
+            if !changed {
+                break;
+            }
         }
+
+        let mut nonterminals = Vec::new();
+        for (n, is_reachable) in reachable_nonterminal.into_iter().enumerate() {
+            if !is_reachable {
+                nonterminals.push(Nonterminal(n as u32));
+            }
+        }
+
+        let mut terminals = Vec::new();
+        for (t, is_reachable) in reachable_terminal.into_iter().enumerate() {
+            if !is_reachable {
+                terminals.push(Terminal(t as u32));
+            }
+        }
+
+        (nonterminals, terminals)
     }
 }
 
@@ -136,8 +201,12 @@ pub struct ProperGrammar {}
 pub enum Error {
     /// One or more nonterminals can never produce a string of terminals during derivation.
     UnproductiveNonterminals(Vec<Nonterminal>),
+
+    /// One or more symbols are can not be produced by a derivation from the start symbol.
+    UnreachableSymbols(Vec<Nonterminal>, Vec<Terminal>),
 }
 
+#[derive(Debug)]
 enum Symbol {
     Nonterminal(Nonterminal),
     Terminal(Terminal),
@@ -197,6 +266,28 @@ mod tests {
         grammar.add_rule(x).nonterminal(y);
 
         let error: Error = grammar.validate().unwrap_err();
-        assert_eq!(Error::UnproductiveNonterminals(vec![start, y]), error);
+        assert_eq!(Error::UnproductiveNonterminals(vec![y]), error);
+    }
+
+    #[test]
+    fn unreachable_grammar_is_not_proper() {
+        let (start, mut grammar): (Nonterminal, Grammar) = Grammar::new();
+        // S -> X
+        // X -> a
+        // Y -> b
+        // unreachable: b, Y, c
+
+        let x = grammar.add_nonterminal();
+        let y = grammar.add_nonterminal();
+        let a = grammar.add_terminal();
+        let b = grammar.add_terminal();
+        let c = grammar.add_terminal();
+
+        grammar.add_rule(start).nonterminal(x);
+        grammar.add_rule(x).terminal(a);
+        grammar.add_rule(y).terminal(b);
+
+        let error: Error = grammar.validate().unwrap_err();
+        assert_eq!(Error::UnreachableSymbols(vec![y], vec![b, c]), error);
     }
 }
