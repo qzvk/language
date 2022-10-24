@@ -12,12 +12,6 @@ pub trait Node: Clone + Copy + PartialEq + Eq {
     fn from_usize(_: usize) -> Self;
 }
 
-impl Node for usize {
-    fn from_usize(n: usize) -> Self {
-        n
-    }
-}
-
 /// For a directed graph with vertices `0..count`, where `neighbour` defines whether two vertices
 /// are connected, return the sets of vertices which are in cycles.
 pub fn find_cycles<N: Node>(count: usize, is_neighbour: impl Fn(N, N) -> bool) -> Vec<Vec<N>> {
@@ -119,7 +113,13 @@ impl<N: Node, F: Fn(N, N) -> bool> Search<N, F> {
 
 #[cfg(test)]
 mod tests {
-    use super::find_cycles;
+    use super::{find_cycles, Node};
+
+    impl Node for usize {
+        fn from_usize(n: usize) -> Self {
+            n
+        }
+    }
 
     #[test]
     fn empty_graph_has_no_cycles() {

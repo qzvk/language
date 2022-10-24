@@ -70,33 +70,15 @@ impl Grammar {
     /// function fails. In the future, it might be interesting to transform the given grammar into
     /// a structurally equivalent one.
     pub fn validate(self) -> Result<ProperGrammar, Error> {
-        let unproductive_nonterminals = self.unproductive_nonterminals();
-        if !unproductive_nonterminals.is_empty() {
-            return Err(Error::UnproductiveNonterminals(unproductive_nonterminals));
-        }
-
-        let (unreachable_nonterminals, unreachable_terminals) = self.unreachable_symbols();
-        if !unreachable_nonterminals.is_empty() || !unreachable_terminals.is_empty() {
-            return Err(Error::UnreachableSymbols(
-                unreachable_nonterminals,
-                unreachable_terminals,
-            ));
-        }
-
-        let epsilon_productions = self.epsilon_productions();
-        if !epsilon_productions.is_empty() {
-            return Err(Error::EpsilonProductions(epsilon_productions));
-        }
-
-        let cycles = self.cycles();
-        if !cycles.is_empty() {
-            return Err(Error::ContainsCycles(cycles));
-        }
-
+        self.validate_productivity()?;
+        self.validate_reachability()?;
+        self.validate_epsilon_productions()?;
+        self.validate_acyclic()?;
         Ok(ProperGrammar {})
     }
 
-    fn unproductive_nonterminals(&self) -> Vec<Nonterminal> {
+    /// Validate that the grammar contains no unproductive nonterminals. See [`Self::validate`].
+    fn validate_productivity(&self) -> Result<(), Error> {
         let mut productive = vec![false; self.nonterminal_count as usize];
 
         loop {
@@ -132,10 +114,15 @@ impl Grammar {
             }
         }
 
-        unproductive_nonterminals
+        if unproductive_nonterminals.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::UnproductiveNonterminals(unproductive_nonterminals))
+        }
     }
 
-    fn unreachable_symbols(&self) -> (Vec<Nonterminal>, Vec<Terminal>) {
+    /// Validate that the grammar contains no unreachable symbols. See [`Self::validate`].
+    fn validate_reachability(&self) -> Result<(), Error> {
         let mut reachable_nonterminal = vec![false; self.nonterminal_count as usize];
         let mut reachable_terminal = vec![false; self.terminal_count as usize];
 
@@ -181,10 +168,15 @@ impl Grammar {
             }
         }
 
-        (nonterminals, terminals)
+        if nonterminals.is_empty() && terminals.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::UnreachableSymbols(nonterminals, terminals))
+        }
     }
 
-    fn epsilon_productions(&self) -> Vec<Nonterminal> {
+    /// Validate that the grammar contains no epsilon productions. See [`Self::validate`].
+    fn validate_epsilon_productions(&self) -> Result<(), Error> {
         let mut nonterminals = Vec::new();
 
         for (left, right) in &self.rules {
@@ -198,10 +190,15 @@ impl Grammar {
             }
         }
 
-        nonterminals
+        if nonterminals.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::EpsilonProductions(nonterminals))
+        }
     }
 
-    fn cycles(&self) -> Vec<Vec<Nonterminal>> {
+    /// Validate that the grammar contains no derivation cycles. See [`Self::validate`].
+    fn validate_acyclic(&self) -> Result<(), Error> {
         let is_neighbour = |a: Nonterminal, b: Nonterminal| {
             // TODO: Since this will allocate for EVERY is_neighbour call, this is really slow.
             // Consider writing something faster.
@@ -209,7 +206,13 @@ impl Grammar {
             self.rules.binary_search(&value).is_ok()
         };
 
-        find_cycles(self.nonterminal_count as usize, is_neighbour)
+        let cycles = find_cycles(self.nonterminal_count as usize, is_neighbour);
+
+        if cycles.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::ContainsCycles(cycles))
+        }
     }
 }
 
