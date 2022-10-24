@@ -242,12 +242,12 @@ pub struct GrammarRule<'a> {
 }
 
 impl<'a> GrammarRule<'a> {
-    /// Append a terminal to the of the rule.
+    /// Append a terminal to the rule.
     pub fn terminal(self, t: Terminal) -> Self {
         self.symbol(Symbol::Terminal(t))
     }
 
-    /// Append a nonterminal to the of the rule.
+    /// Append a nonterminal to the rule.
     pub fn nonterminal(self, n: Nonterminal) -> Self {
         self.symbol(Symbol::Nonterminal(n))
     }
