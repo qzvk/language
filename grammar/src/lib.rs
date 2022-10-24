@@ -74,7 +74,10 @@ impl Grammar {
         self.validate_reachability()?;
         self.validate_epsilon_productions()?;
         self.validate_acyclic()?;
-        Ok(ProperGrammar {})
+
+        let nonterminal_first = self.calculate_firsts();
+
+        Ok(ProperGrammar { nonterminal_first })
     }
 
     /// Validate that the grammar contains no unproductive nonterminals. See [`Self::validate`].
@@ -214,6 +217,56 @@ impl Grammar {
             Err(Error::ContainsCycles(cycles))
         }
     }
+
+    fn calculate_firsts(&self) -> Vec<Vec<Terminal>> {
+        let mut sets = vec![Vec::new(); self.nonterminals.len()];
+
+        loop {
+            let mut changed = false;
+
+            for (left, right) in &self.rules {
+                // This assumes that no symbols are nullable, and therefore only the first symbol
+                // of a rewrite rule has to be checked.
+                match right.get(0) {
+                    Some(&Symbol::Nonterminal(n)) => {
+                        let current_items = &sets[left.0 as usize];
+                        let mut to_add = Vec::new();
+
+                        for &s in &sets[n.0 as usize] {
+                            if !current_items.contains(&s) {
+                                to_add.push(s);
+                                changed = true;
+                            }
+                        }
+
+                        sets[left.0 as usize].extend(to_add);
+                    }
+                    Some(&Symbol::Terminal(t)) => {
+                        let set = &mut sets[left.0 as usize];
+                        if !set.contains(&t) {
+                            set.push(t);
+                            changed = true;
+                        }
+                    }
+                    None => {
+                        // This function should only be called after validation, before conversion
+                        // to a ProperGrammar.
+                        panic!("Epsilon production encountered during FIRST calculation.")
+                    }
+                }
+            }
+
+            if !changed {
+                break;
+            }
+        }
+
+        for set in &mut sets {
+            set.sort();
+        }
+
+        sets
+    }
 }
 
 impl std::fmt::Display for Grammar {
@@ -274,7 +327,23 @@ pub struct Terminal(u32);
 
 /// A proper context-free grammar. See [`Grammar::validate`].
 #[derive(Debug)]
-pub struct ProperGrammar {}
+pub struct ProperGrammar {
+    // TODO: Consider using a hash set instead?
+    nonterminal_first: Vec<Vec<Terminal>>,
+}
+
+impl ProperGrammar {
+    /// Return the set of symbols which may begin strings derived from `symbols.`
+    ///
+    /// TODO: Consider returning a slice of precomputed values.
+    pub fn first(&self, symbols: &[Symbol]) -> Vec<Terminal> {
+        match symbols.get(0) {
+            Some(&Symbol::Nonterminal(n)) => self.nonterminal_first[n.0 as usize].clone(),
+            Some(&Symbol::Terminal(t)) => vec![t],
+            None => Vec::new(),
+        }
+    }
+}
 
 /// An error in a non-proper grammar.
 #[derive(Debug, PartialEq, Eq)]
@@ -292,15 +361,19 @@ pub enum Error {
     ContainsCycles(Vec<Vec<Nonterminal>>),
 }
 
+/// A symbol of a grammar, either terminal or nonterminal.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum Symbol {
+pub enum Symbol {
+    /// A nonterminal symbol.
     Nonterminal(Nonterminal),
+
+    /// A terminal symbol.
     Terminal(Terminal),
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Error, Grammar, Nonterminal, ProperGrammar, Terminal};
+    use super::{Error, Grammar, Nonterminal, ProperGrammar, Symbol, Terminal};
 
     #[test]
     fn can_create_grammar() {
@@ -472,5 +545,79 @@ mod tests {
         const EXPECTED: &str = "start -> X\nX -> c\nY -> d\nX -> d Y c\n";
         let actual = grammar.to_string();
         assert_eq!(EXPECTED, actual);
+    }
+
+    #[test]
+    fn can_compute_first_sets_of_terminal_only_grammar() {
+        let (start, mut grammar) = Grammar::new();
+        let a = grammar.add_terminal("a");
+        let b = grammar.add_terminal("b");
+        let c = grammar.add_terminal("c");
+        grammar.add_rule(start).terminal(a);
+        grammar.add_rule(start).terminal(b);
+        grammar.add_rule(start).terminal(c);
+
+        let grammar = grammar.validate().unwrap();
+        let first_start = grammar.first(&[Symbol::Nonterminal(start)]);
+        assert_eq!(vec![a, b, c], first_start);
+    }
+
+    #[test]
+    fn can_compute_first_sets_of_example_grammar() {
+        let (start, mut grammar) = Grammar::new();
+        // S -> X
+        // S -> Y
+        // X -> a X
+        // X -> b X
+        // X -> d
+        // Y -> Y Z
+        // Y -> Z e
+        // Z -> c Z
+        // Z -> d
+
+        let x = grammar.add_nonterminal("x");
+        let y = grammar.add_nonterminal("y");
+        let z = grammar.add_nonterminal("z");
+        let a = grammar.add_terminal("a");
+        let b = grammar.add_terminal("b");
+        let c = grammar.add_terminal("c");
+        let d = grammar.add_terminal("d");
+        let e = grammar.add_terminal("d");
+        grammar.add_rule(start).nonterminal(x);
+        grammar.add_rule(start).nonterminal(y);
+        grammar.add_rule(x).terminal(a).nonterminal(x);
+        grammar.add_rule(x).terminal(b).nonterminal(x);
+        grammar.add_rule(x).terminal(d);
+        grammar.add_rule(y).nonterminal(y).nonterminal(z);
+        grammar.add_rule(y).nonterminal(z).terminal(e);
+        grammar.add_rule(z).terminal(c).nonterminal(z);
+        grammar.add_rule(z).terminal(d);
+
+        // I've left out tests for FIRST of more than 1 symbols. Since this operation is over a
+        // proper grammar, where nullable symbols are not allowed, the FIRST algorithm never needs
+        // to check more than 1 symbol from its input.
+
+        let grammar = grammar.validate().unwrap();
+        let first_empty = grammar.first(&[]);
+        let first_start = grammar.first(&[Symbol::Nonterminal(start)]);
+        let first_a = grammar.first(&[Symbol::Terminal(a)]);
+        let first_b = grammar.first(&[Symbol::Terminal(b)]);
+        let first_c = grammar.first(&[Symbol::Terminal(c)]);
+        let first_d = grammar.first(&[Symbol::Terminal(d)]);
+        let first_e = grammar.first(&[Symbol::Terminal(e)]);
+        let first_x = grammar.first(&[Symbol::Nonterminal(x)]);
+        let first_y = grammar.first(&[Symbol::Nonterminal(y)]);
+        let first_z = grammar.first(&[Symbol::Nonterminal(z)]);
+
+        assert!(first_empty.is_empty());
+        assert_eq!(vec![a, b, c, d], first_start);
+        assert_eq!(vec![a], first_a);
+        assert_eq!(vec![b], first_b);
+        assert_eq!(vec![c], first_c);
+        assert_eq!(vec![d], first_d);
+        assert_eq!(vec![e], first_e);
+        assert_eq!(vec![a, b, d], first_x);
+        assert_eq!(vec![c, d], first_y);
+        assert_eq!(vec![c, d], first_z);
     }
 }
