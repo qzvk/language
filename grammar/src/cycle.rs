@@ -6,9 +6,21 @@
 //! the cycle, it becomes a 'full cycle' and is not updated anymore. Otherwise, the node is
 //! prepended to the cycle.
 
+use std::marker::PhantomData;
+
+pub trait Node: Clone + Copy + PartialEq + Eq {
+    fn from_usize(_: usize) -> Self;
+}
+
+impl Node for usize {
+    fn from_usize(n: usize) -> Self {
+        n
+    }
+}
+
 /// For a directed graph with vertices `0..count`, where `neighbour` defines whether two vertices
 /// are connected, return the sets of vertices which are in cycles.
-pub fn find_cycles(count: usize, is_neighbour: impl Fn(usize, usize) -> bool) -> Vec<Vec<usize>> {
+pub fn find_cycles<N: Node>(count: usize, is_neighbour: impl Fn(N, N) -> bool) -> Vec<Vec<N>> {
     Search::new(count, is_neighbour).execute()
 }
 
@@ -21,15 +33,15 @@ enum VertexState {
 
 /// A cycle being built by the depth-first search. When being built, it includes the 'provoking
 /// vertex,' the vertex which completed the cycle.
-enum Cycle {
-    Building(usize, Vec<usize>),
-    Full(Vec<usize>),
+enum Cycle<N: Node> {
+    Building(N, Vec<N>),
+    Full(Vec<N>),
 }
 
-impl Cycle {
+impl<N: Node> Cycle<N> {
     /// Update a cycle with a vertex from the search stack. If the vertex 'completes' the cycle,
     /// transisition to a 'full cycle,' otherwise prepend it to the list of vertices.
-    pub fn update(self, vertex: usize) -> Self {
+    pub fn update(self, vertex: N) -> Self {
         match self {
             Cycle::Building(provoking, mut cycle) => {
                 cycle.insert(0, vertex);
@@ -46,20 +58,22 @@ impl Cycle {
     }
 }
 
-struct Search<F: Fn(usize, usize) -> bool> {
+struct Search<N: Node, F: Fn(N, N) -> bool> {
     vertices: Vec<VertexState>,
     is_neighbour: F,
+    _phantom: PhantomData<N>,
 }
 
-impl<F: Fn(usize, usize) -> bool> Search<F> {
+impl<N: Node, F: Fn(N, N) -> bool> Search<N, F> {
     pub fn new(count: usize, is_neighbour: F) -> Self {
         Self {
             vertices: vec![VertexState::Unvisited; count],
             is_neighbour,
+            _phantom: PhantomData,
         }
     }
 
-    pub fn execute(mut self) -> Vec<Vec<usize>> {
+    pub fn execute(mut self) -> Vec<Vec<N>> {
         let mut cycles = Vec::new();
 
         for v in 0..self.vertices.len() {
@@ -75,7 +89,7 @@ impl<F: Fn(usize, usize) -> bool> Search<F> {
         cycles
     }
 
-    fn search(&mut self, v: usize) -> Vec<Cycle> {
+    fn search(&mut self, v: usize) -> Vec<Cycle<N>> {
         debug_assert!(v < self.vertices.len());
 
         match self.vertices[v] {
@@ -85,9 +99,9 @@ impl<F: Fn(usize, usize) -> bool> Search<F> {
                 let mut cycles = Vec::new();
 
                 for w in 0..self.vertices.len() {
-                    if (self.is_neighbour)(v, w) {
+                    if (self.is_neighbour)(N::from_usize(v), N::from_usize(w)) {
                         for cycle in self.search(w) {
-                            cycles.push(cycle.update(v));
+                            cycles.push(cycle.update(N::from_usize(v)));
                         }
                     }
                 }
@@ -96,7 +110,7 @@ impl<F: Fn(usize, usize) -> bool> Search<F> {
                 cycles
             }
 
-            VertexState::Visited => vec![Cycle::Building(v, vec![])],
+            VertexState::Visited => vec![Cycle::Building(N::from_usize(v), vec![])],
 
             VertexState::Finished => Vec::new(),
         }
@@ -109,7 +123,7 @@ mod tests {
 
     #[test]
     fn empty_graph_has_no_cycles() {
-        let cycles = find_cycles(0, |_, _| false);
+        let cycles = find_cycles(0, |_: usize, _: usize| false);
         assert!(cycles.is_empty());
     }
 

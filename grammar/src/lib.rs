@@ -4,6 +4,7 @@
 //! Library for validating grammars and generating parse tables.
 
 mod cycle;
+use cycle::find_cycles;
 
 /// A context-free grammar.
 #[derive(Debug)]
@@ -58,6 +59,16 @@ impl Grammar {
     }
 
     /// If the grammar is proper, return `Ok`, otherwise return `Err`.
+    ///
+    /// A proper grammar contains no:
+    /// - unreachable symbols, which cannot be derived from the start symbol;
+    /// - unproductive symbols, which cannot derive a string of terminals;
+    /// - epsilon productions, which have an empty right-hand side;
+    /// - cycles, where nonterminals can derive themselves.
+    ///
+    /// TODO: Currently, this does not modify the grammar. If the given grammar is not proper, this
+    /// function fails. In the future, it might be interesting to transform the given grammar into
+    /// a structurally equivalent one.
     pub fn validate(self) -> Result<ProperGrammar, Error> {
         let unproductive_nonterminals = self.unproductive_nonterminals();
         if !unproductive_nonterminals.is_empty() {
@@ -75,6 +86,11 @@ impl Grammar {
         let epsilon_productions = self.epsilon_productions();
         if !epsilon_productions.is_empty() {
             return Err(Error::EpsilonProductions(epsilon_productions));
+        }
+
+        let cycles = self.cycles();
+        if !cycles.is_empty() {
+            return Err(Error::ContainsCycles(cycles));
         }
 
         Ok(ProperGrammar {})
@@ -184,6 +200,17 @@ impl Grammar {
 
         nonterminals
     }
+
+    fn cycles(&self) -> Vec<Vec<Nonterminal>> {
+        let is_neighbour = |a: Nonterminal, b: Nonterminal| {
+            // TODO: Since this will allocate for EVERY is_neighbour call, this is really slow.
+            // Consider writing something faster.
+            let value = (a, vec![Symbol::Nonterminal(b)]);
+            self.rules.binary_search(&value).is_ok()
+        };
+
+        find_cycles(self.nonterminal_count as usize, is_neighbour)
+    }
 }
 
 /// A rewrite rule of a context-free grammar.
@@ -212,6 +239,12 @@ impl<'a> GrammarRule<'a> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Nonterminal(u32);
 
+impl cycle::Node for Nonterminal {
+    fn from_usize(n: usize) -> Self {
+        Self(n as u32)
+    }
+}
+
 /// A terminal symbol of a grammar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Terminal(u32);
@@ -231,9 +264,12 @@ pub enum Error {
 
     /// One or more nonterminals can derive empty strings.
     EpsilonProductions(Vec<Nonterminal>),
+
+    /// One or more nonterminals can derive themselves exactly.
+    ContainsCycles(Vec<Vec<Nonterminal>>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Symbol {
     Nonterminal(Nonterminal),
     Terminal(Terminal),
@@ -344,5 +380,55 @@ mod tests {
 
         let error: Error = grammar.validate().unwrap_err();
         assert_eq!(Error::EpsilonProductions(vec![x, z]), error);
+    }
+
+    #[test]
+    fn cycles_are_not_proper() {
+        let (start, mut grammar): (Nonterminal, Grammar) = Grammar::new();
+        // S -> X
+        // S -> Y
+        // S -> U
+        // X -> a
+        // X -> X a
+        // X -> b W
+        // Y -> Z
+        // Z -> Y a
+        // Z -> W
+        // W -> Y
+        // W -> c
+        // U -> V
+        // V -> U
+        // U -> b
+
+        let x = grammar.add_nonterminal();
+        let y = grammar.add_nonterminal();
+        let z = grammar.add_nonterminal();
+        let w = grammar.add_nonterminal();
+        let u = grammar.add_nonterminal();
+        let v = grammar.add_nonterminal();
+        let a = grammar.add_terminal();
+        let b = grammar.add_terminal();
+        let c = grammar.add_terminal();
+
+        grammar.add_rule(start).nonterminal(x);
+        grammar.add_rule(start).nonterminal(y);
+        grammar.add_rule(start).nonterminal(u);
+        grammar.add_rule(x).terminal(a);
+        grammar.add_rule(x).nonterminal(x).terminal(a);
+        grammar.add_rule(x).terminal(b).nonterminal(w);
+        grammar.add_rule(y).nonterminal(z);
+        grammar.add_rule(z).nonterminal(y).terminal(a);
+        grammar.add_rule(z).nonterminal(w);
+        grammar.add_rule(w).nonterminal(y);
+        grammar.add_rule(w).terminal(c);
+        grammar.add_rule(u).nonterminal(v);
+        grammar.add_rule(u).terminal(b);
+        grammar.add_rule(v).nonterminal(u);
+
+        let error: Error = grammar.validate().unwrap_err();
+        assert_eq!(
+            Error::ContainsCycles(vec![vec![y, z, w], vec![u, v]]),
+            error
+        );
     }
 }
