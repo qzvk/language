@@ -9,8 +9,8 @@ use cycle::find_cycles;
 /// A context-free grammar.
 #[derive(Debug)]
 pub struct Grammar {
-    nonterminal_count: u32,
-    terminal_count: u32,
+    nonterminals: Vec<&'static str>,
+    terminals: Vec<&'static str>,
     rules: Vec<(Nonterminal, Vec<Symbol>)>,
 }
 
@@ -20,8 +20,8 @@ impl Grammar {
         let start = Nonterminal(0);
 
         let grammar = Self {
-            nonterminal_count: 1, // the start nonterminal is pre-defined
-            terminal_count: 0,
+            nonterminals: vec!["start"],
+            terminals: Vec::new(),
             rules: Vec::new(),
         };
 
@@ -29,17 +29,17 @@ impl Grammar {
     }
 
     /// Add a new, unique nonterminal to the grammar.
-    pub fn add_nonterminal(&mut self) -> Nonterminal {
-        let index = self.nonterminal_count;
-        self.nonterminal_count += 1;
-        Nonterminal(index)
+    pub fn add_nonterminal(&mut self, name: &'static str) -> Nonterminal {
+        let index = self.nonterminals.len();
+        self.nonterminals.push(name);
+        Nonterminal(index as u32)
     }
 
     /// Add a new, unique terminal to the grammar.
-    pub fn add_terminal(&mut self) -> Terminal {
-        let index = self.terminal_count;
-        self.terminal_count += 1;
-        Terminal(index)
+    pub fn add_terminal(&mut self, name: &'static str) -> Terminal {
+        let index = self.terminals.len();
+        self.terminals.push(name);
+        Terminal(index as u32)
     }
 
     /// Add a rule to the grammar.
@@ -79,7 +79,7 @@ impl Grammar {
 
     /// Validate that the grammar contains no unproductive nonterminals. See [`Self::validate`].
     fn validate_productivity(&self) -> Result<(), Error> {
-        let mut productive = vec![false; self.nonterminal_count as usize];
+        let mut productive = vec![false; self.nonterminals.len()];
 
         loop {
             let mut changed = false;
@@ -123,8 +123,8 @@ impl Grammar {
 
     /// Validate that the grammar contains no unreachable symbols. See [`Self::validate`].
     fn validate_reachability(&self) -> Result<(), Error> {
-        let mut reachable_nonterminal = vec![false; self.nonterminal_count as usize];
-        let mut reachable_terminal = vec![false; self.terminal_count as usize];
+        let mut reachable_nonterminal = vec![false; self.nonterminals.len()];
+        let mut reachable_terminal = vec![false; self.terminals.len()];
 
         reachable_nonterminal[0] = true; // start nonterminal is reachable by definition
 
@@ -206,13 +206,33 @@ impl Grammar {
             self.rules.binary_search(&value).is_ok()
         };
 
-        let cycles = find_cycles(self.nonterminal_count as usize, is_neighbour);
+        let cycles = find_cycles(self.nonterminals.len(), is_neighbour);
 
         if cycles.is_empty() {
             Ok(())
         } else {
             Err(Error::ContainsCycles(cycles))
         }
+    }
+}
+
+impl std::fmt::Display for Grammar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (left, right) in &self.rules {
+            write!(f, "{} ->", self.nonterminals[left.0 as usize])?;
+
+            for r in right {
+                let string = match r {
+                    Symbol::Nonterminal(n) => self.nonterminals[n.0 as usize],
+                    Symbol::Terminal(t) => self.terminals[t.0 as usize],
+                };
+                write!(f, " {}", string)?;
+            }
+
+            writeln!(f)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -286,15 +306,15 @@ mod tests {
     fn can_create_grammar() {
         let (start, mut grammar): (Nonterminal, Grammar) = Grammar::new();
 
-        let a: Nonterminal = grammar.add_nonterminal();
+        let a: Nonterminal = grammar.add_nonterminal("A");
         assert_ne!(start, a);
 
-        let b: Nonterminal = grammar.add_nonterminal();
+        let b: Nonterminal = grammar.add_nonterminal("B");
         assert_ne!(start, b);
         assert_ne!(a, b);
 
-        let c: Terminal = grammar.add_terminal();
-        let d: Terminal = grammar.add_terminal();
+        let c: Terminal = grammar.add_terminal("c");
+        let d: Terminal = grammar.add_terminal("d");
         assert_ne!(c, d);
 
         assert_eq!(0, grammar.rule_count());
@@ -321,9 +341,9 @@ mod tests {
         // X -> a
         // X -> Y
 
-        let x = grammar.add_nonterminal();
-        let y = grammar.add_nonterminal();
-        let a = grammar.add_terminal();
+        let x = grammar.add_nonterminal("X");
+        let y = grammar.add_nonterminal("Y");
+        let a = grammar.add_terminal("a");
 
         grammar.add_rule(start).nonterminal(x);
         grammar.add_rule(x).terminal(a);
@@ -341,11 +361,11 @@ mod tests {
         // Y -> b
         // unreachable: b, Y, c
 
-        let x = grammar.add_nonterminal();
-        let y = grammar.add_nonterminal();
-        let a = grammar.add_terminal();
-        let b = grammar.add_terminal();
-        let c = grammar.add_terminal();
+        let x = grammar.add_nonterminal("X");
+        let y = grammar.add_nonterminal("Y");
+        let a = grammar.add_terminal("a");
+        let b = grammar.add_terminal("b");
+        let c = grammar.add_terminal("c");
 
         grammar.add_rule(start).nonterminal(x);
         grammar.add_rule(x).terminal(a);
@@ -366,12 +386,12 @@ mod tests {
         // Y -> b Z c
         // Z ->
 
-        let x = grammar.add_nonterminal();
-        let y = grammar.add_nonterminal();
-        let z = grammar.add_nonterminal();
-        let a = grammar.add_terminal();
-        let b = grammar.add_terminal();
-        let c = grammar.add_terminal();
+        let x = grammar.add_nonterminal("X");
+        let y = grammar.add_nonterminal("Y");
+        let z = grammar.add_nonterminal("Z");
+        let a = grammar.add_terminal("a");
+        let b = grammar.add_terminal("b");
+        let c = grammar.add_terminal("c");
 
         grammar.add_rule(start).nonterminal(x);
         grammar.add_rule(start).nonterminal(y);
@@ -403,15 +423,15 @@ mod tests {
         // V -> U
         // U -> b
 
-        let x = grammar.add_nonterminal();
-        let y = grammar.add_nonterminal();
-        let z = grammar.add_nonterminal();
-        let w = grammar.add_nonterminal();
-        let u = grammar.add_nonterminal();
-        let v = grammar.add_nonterminal();
-        let a = grammar.add_terminal();
-        let b = grammar.add_terminal();
-        let c = grammar.add_terminal();
+        let x = grammar.add_nonterminal("X");
+        let y = grammar.add_nonterminal("Y");
+        let z = grammar.add_nonterminal("Z");
+        let w = grammar.add_nonterminal("W");
+        let u = grammar.add_nonterminal("U");
+        let v = grammar.add_nonterminal("V");
+        let a = grammar.add_terminal("a");
+        let b = grammar.add_terminal("b");
+        let c = grammar.add_terminal("c");
 
         grammar.add_rule(start).nonterminal(x);
         grammar.add_rule(start).nonterminal(y);
@@ -433,5 +453,24 @@ mod tests {
             Error::ContainsCycles(vec![vec![y, z, w], vec![u, v]]),
             error
         );
+    }
+
+    #[test]
+    fn can_display_grammar() {
+        let (start, mut grammar): (Nonterminal, Grammar) = Grammar::new();
+
+        let x = grammar.add_nonterminal("X");
+        let y = grammar.add_nonterminal("Y");
+        let c = grammar.add_terminal("c");
+        let d = grammar.add_terminal("d");
+
+        grammar.add_rule(start).nonterminal(x);
+        grammar.add_rule(x).terminal(c);
+        grammar.add_rule(y).terminal(d);
+        grammar.add_rule(x).terminal(d).nonterminal(y).terminal(c);
+
+        const EXPECTED: &str = "start -> X\nX -> c\nY -> d\nX -> d Y c\n";
+        let actual = grammar.to_string();
+        assert_eq!(EXPECTED, actual);
     }
 }

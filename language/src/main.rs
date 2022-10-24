@@ -7,24 +7,24 @@ use grammar::{Grammar, ProperGrammar};
 fn generate_grammar() -> ProperGrammar {
     let (document, mut grammar) = Grammar::new();
 
-    let plus = grammar.add_terminal();
-    let minus = grammar.add_terminal();
-    let asterisk = grammar.add_terminal();
-    let slash = grammar.add_terminal();
-    let semicolon = grammar.add_terminal();
-    let equals = grammar.add_terminal();
-    let open_paren = grammar.add_terminal();
-    let close_paren = grammar.add_terminal();
-    let integer = grammar.add_terminal();
-    let ident = grammar.add_terminal();
+    let plus = grammar.add_terminal("'+'");
+    let minus = grammar.add_terminal("'-'");
+    let asterisk = grammar.add_terminal("'*'");
+    let slash = grammar.add_terminal("'/'");
+    let semicolon = grammar.add_terminal("';'");
+    let equals = grammar.add_terminal("'='");
+    let open_paren = grammar.add_terminal("'('");
+    let close_paren = grammar.add_terminal("')'");
+    let integer = grammar.add_terminal("integer");
+    let ident = grammar.add_terminal("ident");
 
-    let assignment_seq = grammar.add_nonterminal();
-    let assignment = grammar.add_nonterminal();
-    let ident_seq = grammar.add_nonterminal();
-    let mul_expr = grammar.add_nonterminal();
-    let add_expr = grammar.add_nonterminal();
-    let apply_expr = grammar.add_nonterminal();
-    let unary_expr = grammar.add_nonterminal();
+    let assignment_seq = grammar.add_nonterminal("assignment-seq");
+    let assignment = grammar.add_nonterminal("assignment");
+    let ident_seq = grammar.add_nonterminal("ident-seq");
+    let mul_expr = grammar.add_nonterminal("mul-expr");
+    let add_expr = grammar.add_nonterminal("add-expr");
+    let apply_expr = grammar.add_nonterminal("apply-expr");
+    let unary_expr = grammar.add_nonterminal("unary-expr");
 
     grammar.add_rule(document).nonterminal(mul_expr);
     grammar
@@ -88,6 +88,8 @@ fn generate_grammar() -> ProperGrammar {
         .terminal(close_paren);
     grammar.add_rule(unary_expr).terminal(integer);
     grammar.add_rule(unary_expr).terminal(ident);
+
+    print!("{}", grammar);
 
     grammar.validate().unwrap()
 }
