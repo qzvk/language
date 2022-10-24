@@ -1,29 +1,27 @@
 The grammar of the language described in McKeeman form:
 
 ```
-document
-    mul-expr
-    assignment-seq mul-expr
+start
+    add-expr
+    assignment-seq add-expr
 
 assignment-seq
     assignment
     assignment assignment-seq
 
 assignment
-    ident-seq '=' mul-expr ';'
+    ident-seq '=' add-expr ';'
 
 ident-seq
     ident
     ident ident-seq
 
-mul-expr
-    mul-expr '*' add-expr
-    mul-expr '/' add-expr
-    add-expr
-
 add-expr
-    add-expr '+' apply-expr
-    add-expr '-' apply-expr
+    add-expr add-op mul-expr
+    mul-expr
+
+mul-expr
+    mul-expr mul-op apply-expr
     apply-expr
 
 apply-expr
@@ -31,7 +29,15 @@ apply-expr
     unary-expr
 
 unary-expr
-    '(' mul-expr ')'
+    '(' add-expr ')'
     integer
     ident
+
+add-op
+    '+'
+    '-'
+
+mul-op
+    '*'
+    '/'
 ```

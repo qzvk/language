@@ -21,16 +21,18 @@ fn generate_grammar() -> ProperGrammar {
     let assignment_seq = grammar.add_nonterminal("assignment-seq");
     let assignment = grammar.add_nonterminal("assignment");
     let ident_seq = grammar.add_nonterminal("ident-seq");
-    let mul_expr = grammar.add_nonterminal("mul-expr");
     let add_expr = grammar.add_nonterminal("add-expr");
+    let mul_expr = grammar.add_nonterminal("mul-expr");
     let apply_expr = grammar.add_nonterminal("apply-expr");
     let unary_expr = grammar.add_nonterminal("unary-expr");
+    let add_op = grammar.add_nonterminal("add-op");
+    let mul_op = grammar.add_nonterminal("mul-op");
 
-    grammar.add_rule(document).nonterminal(mul_expr);
+    grammar.add_rule(document).nonterminal(add_expr);
     grammar
         .add_rule(document)
         .nonterminal(assignment_seq)
-        .nonterminal(mul_expr);
+        .nonterminal(add_expr);
 
     grammar.add_rule(assignment_seq).nonterminal(assignment);
     grammar
@@ -42,7 +44,7 @@ fn generate_grammar() -> ProperGrammar {
         .add_rule(assignment)
         .nonterminal(ident_seq)
         .terminal(equals)
-        .nonterminal(mul_expr)
+        .nonterminal(add_expr)
         .terminal(semicolon);
 
     grammar.add_rule(ident_seq).terminal(ident);
@@ -52,28 +54,18 @@ fn generate_grammar() -> ProperGrammar {
         .nonterminal(ident_seq);
 
     grammar
-        .add_rule(mul_expr)
-        .nonterminal(mul_expr)
-        .terminal(asterisk)
-        .nonterminal(add_expr);
-    grammar
-        .add_rule(mul_expr)
-        .nonterminal(mul_expr)
-        .terminal(slash)
-        .nonterminal(add_expr);
-    grammar.add_rule(mul_expr).nonterminal(add_expr);
+        .add_rule(add_expr)
+        .nonterminal(add_expr)
+        .nonterminal(add_op)
+        .nonterminal(mul_expr);
+    grammar.add_rule(add_expr).nonterminal(mul_expr);
 
     grammar
-        .add_rule(add_expr)
-        .nonterminal(add_expr)
-        .terminal(plus)
+        .add_rule(mul_expr)
+        .nonterminal(mul_expr)
+        .nonterminal(mul_op)
         .nonterminal(apply_expr);
-    grammar
-        .add_rule(add_expr)
-        .nonterminal(add_expr)
-        .terminal(minus)
-        .nonterminal(apply_expr);
-    grammar.add_rule(add_expr).nonterminal(apply_expr);
+    grammar.add_rule(mul_expr).nonterminal(apply_expr);
 
     grammar
         .add_rule(apply_expr)
@@ -84,10 +76,16 @@ fn generate_grammar() -> ProperGrammar {
     grammar
         .add_rule(unary_expr)
         .terminal(open_paren)
-        .nonterminal(mul_expr)
+        .nonterminal(add_expr)
         .terminal(close_paren);
     grammar.add_rule(unary_expr).terminal(integer);
     grammar.add_rule(unary_expr).terminal(ident);
+
+    grammar.add_rule(add_op).terminal(plus);
+    grammar.add_rule(add_op).terminal(minus);
+
+    grammar.add_rule(mul_op).terminal(asterisk);
+    grammar.add_rule(mul_op).terminal(slash);
 
     print!("{}", grammar);
 
