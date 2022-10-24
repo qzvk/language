@@ -3,6 +3,8 @@
 
 //! Library for validating grammars and generating parse tables.
 
+mod cycle;
+
 /// A context-free grammar.
 #[derive(Debug)]
 pub struct Grammar {
