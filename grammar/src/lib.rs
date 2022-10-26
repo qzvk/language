@@ -427,7 +427,7 @@ pub enum Error {
 }
 
 /// A symbol of a grammar, either terminal or nonterminal.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Symbol {
     /// A nonterminal symbol.
     Nonterminal(Nonterminal),
