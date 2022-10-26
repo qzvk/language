@@ -2,7 +2,7 @@
 
 use std::io::{stdin, Read};
 
-use grammar::{Grammar, ProperGrammar};
+use grammar::{Grammar, ProperGrammar, Symbol};
 
 fn generate_grammar() -> ProperGrammar {
     let (document, mut grammar) = Grammar::new();
@@ -89,7 +89,62 @@ fn generate_grammar() -> ProperGrammar {
 
     print!("{}", grammar);
 
-    grammar.validate().unwrap()
+    let proper_grammar = grammar.validate().unwrap();
+    let terminals = [
+        plus,
+        minus,
+        asterisk,
+        slash,
+        semicolon,
+        equals,
+        open_paren,
+        close_paren,
+        integer,
+        ident,
+    ];
+    let nonterminals = [
+        document,
+        assignment_seq,
+        assignment,
+        ident_seq,
+        add_expr,
+        mul_expr,
+        apply_expr,
+        unary_expr,
+        add_op,
+        mul_op,
+    ];
+
+    for n in terminals
+        .into_iter()
+        .map(Symbol::Terminal)
+        .chain(nonterminals.iter().cloned().map(Symbol::Nonterminal))
+    {
+        let name = proper_grammar.symbol_name(n);
+        print!("FIRST({name}) = {{ ");
+
+        for t in proper_grammar.first(&[n]) {
+            let name = proper_grammar.terminal_name(t);
+            print!("{name}, ");
+        }
+        println!("}}");
+    }
+
+    for n in nonterminals {
+        let name = proper_grammar.nonterminal_name(n);
+        print!("FOLLOW({name}) = {{ ");
+
+        for t in proper_grammar.follow(n) {
+            let name = match t {
+                Some(s) => proper_grammar.terminal_name(s),
+                None => "$",
+            };
+            print!("{name}, ");
+        }
+        println!("}}");
+    }
+
+    proper_grammar
 }
 
 fn main() {
