@@ -78,7 +78,12 @@ impl Grammar {
         let firsts = self.calculate_firsts();
         let follows = self.calculate_follows(&firsts);
 
-        Ok(ProperGrammar { firsts, follows })
+        Ok(ProperGrammar {
+            nonterminals: self.nonterminals,
+            terminals: self.terminals,
+            firsts,
+            follows,
+        })
     }
 
     /// Validate that the grammar contains no unproductive nonterminals. See [`Self::validate`].
@@ -385,6 +390,8 @@ pub struct Terminal(u32);
 /// A proper context-free grammar. See [`Grammar::validate`].
 #[derive(Debug)]
 pub struct ProperGrammar {
+    nonterminals: Vec<&'static str>,
+    terminals: Vec<&'static str>,
     // TODO: Consider using a hash set instead?
     firsts: Vec<Vec<Terminal>>,
     // TODO: Again, consider the HashSet.
@@ -407,6 +414,24 @@ impl ProperGrammar {
     /// used to encode the endmarker.
     pub fn follow(&self, nonterminal: Nonterminal) -> Vec<Option<Terminal>> {
         self.follows[nonterminal.0 as usize].clone()
+    }
+
+    /// The name of the given nonterminal.
+    pub fn nonterminal_name(&self, nonterminal: Nonterminal) -> &'static str {
+        self.nonterminals[nonterminal.0 as usize]
+    }
+
+    /// The name of the given terminal.
+    pub fn terminal_name(&self, terminal: Terminal) -> &'static str {
+        self.terminals[terminal.0 as usize]
+    }
+
+    /// The name of the given terminal.
+    pub fn symbol_name(&self, symbol: Symbol) -> &'static str {
+        match symbol {
+            Symbol::Nonterminal(n) => self.nonterminal_name(n),
+            Symbol::Terminal(t) => self.terminal_name(t),
+        }
     }
 }
 

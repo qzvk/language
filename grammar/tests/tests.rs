@@ -282,3 +282,24 @@ fn can_compute_follow_set_of_example_grammar() {
     assert_eq!(vec![None, Some(a)], grammar.follow(y));
     assert_eq!(vec![None, Some(c)], grammar.follow(z));
 }
+
+#[test]
+fn can_get_symbol_names() {
+    let (start, mut grammar) = Grammar::new();
+    let t = grammar.add_terminal("terminal");
+    let s = grammar.add_nonterminal("Example");
+    let u = grammar.add_terminal("Terminal2");
+    grammar.add_rule(start).nonterminal(s);
+    grammar.add_rule(s).terminal(t).terminal(u);
+    let proper_grammar = grammar.validate().unwrap();
+
+    assert_eq!("start", proper_grammar.nonterminal_name(start));
+    assert_eq!("terminal", proper_grammar.terminal_name(t));
+    assert_eq!("Example", proper_grammar.nonterminal_name(s));
+    assert_eq!("Terminal2", proper_grammar.terminal_name(u));
+    assert_eq!(
+        "Example",
+        proper_grammar.symbol_name(Symbol::Nonterminal(s))
+    );
+    assert_eq!("Terminal2", proper_grammar.symbol_name(Symbol::Terminal(u)));
+}
