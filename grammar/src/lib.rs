@@ -75,9 +75,10 @@ impl Grammar {
         self.validate_epsilon_productions()?;
         self.validate_acyclic()?;
 
-        let nonterminal_first = self.calculate_firsts();
+        let firsts = self.calculate_firsts();
+        let follows = self.calculate_follows(&firsts);
 
-        Ok(ProperGrammar { nonterminal_first })
+        Ok(ProperGrammar { firsts, follows })
     }
 
     /// Validate that the grammar contains no unproductive nonterminals. See [`Self::validate`].
@@ -267,6 +268,62 @@ impl Grammar {
 
         sets
     }
+
+    fn calculate_follows(&self, firsts: &[Vec<Terminal>]) -> Vec<Vec<Option<Terminal>>> {
+        let mut follows = vec![Vec::new(); self.nonterminals.len()];
+
+        // Add endmarker to start symbol.
+        follows[0].push(None);
+
+        loop {
+            let mut changed = false;
+
+            for (left, right) in &self.rules {
+                for window in right.windows(2) {
+                    let (a, b) = (&window[0], &window[1]);
+
+                    if let Symbol::Nonterminal(n) = a {
+                        match b {
+                            Symbol::Nonterminal(x) => {
+                                for &y in &firsts[x.0 as usize] {
+                                    if !follows[n.0 as usize].contains(&Some(y)) {
+                                        follows[n.0 as usize].push(Some(y));
+                                        changed = true;
+                                    }
+                                }
+                            }
+                            &Symbol::Terminal(t) => {
+                                if !follows[n.0 as usize].contains(&Some(t)) {
+                                    follows[n.0 as usize].push(Some(t));
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(Symbol::Nonterminal(n)) = right.last() {
+                    let current_items = &follows[n.0 as usize];
+                    let mut new_items = Vec::new();
+
+                    for &item in &follows[left.0 as usize] {
+                        if !current_items.contains(&item) {
+                            new_items.push(item);
+                            changed = true;
+                        }
+                    }
+
+                    follows[n.0 as usize].extend(new_items);
+                }
+            }
+
+            if !changed {
+                break;
+            }
+        }
+
+        follows
+    }
 }
 
 impl std::fmt::Display for Grammar {
@@ -329,19 +386,27 @@ pub struct Terminal(u32);
 #[derive(Debug)]
 pub struct ProperGrammar {
     // TODO: Consider using a hash set instead?
-    nonterminal_first: Vec<Vec<Terminal>>,
+    firsts: Vec<Vec<Terminal>>,
+    // TODO: Again, consider the HashSet.
+    follows: Vec<Vec<Option<Terminal>>>,
 }
 
 impl ProperGrammar {
-    /// Return the set of symbols which may begin strings derived from `symbols.`
+    /// Return the set of terminals which may begin strings derived from `symbols.`
     ///
     /// TODO: Consider returning a slice of precomputed values.
     pub fn first(&self, symbols: &[Symbol]) -> Vec<Terminal> {
         match symbols.get(0) {
-            Some(&Symbol::Nonterminal(n)) => self.nonterminal_first[n.0 as usize].clone(),
+            Some(&Symbol::Nonterminal(n)) => self.firsts[n.0 as usize].clone(),
             Some(&Symbol::Terminal(t)) => vec![t],
             None => Vec::new(),
         }
+    }
+
+    /// Return the FOLLOW set of terminals which may follow `symbol` in a derivation. `None` is
+    /// used to encode the endmarker.
+    pub fn follow(&self, nonterminal: Nonterminal) -> Vec<Option<Terminal>> {
+        self.follows[nonterminal.0 as usize].clone()
     }
 }
 
@@ -619,5 +684,42 @@ mod tests {
         assert_eq!(vec![a, b, d], first_x);
         assert_eq!(vec![c, d], first_y);
         assert_eq!(vec![c, d], first_z);
+    }
+
+    #[test]
+    fn can_compute_follow_set_of_example_grammar() {
+        let (start, mut grammar) = Grammar::new();
+        // S -> X Y
+        // S -> X Z
+        // X -> d X
+        // X -> d
+        // Y -> Y a
+        // Y -> b
+        // Z -> Z c
+        // Z -> d
+
+        let x = grammar.add_nonterminal("X");
+        let y = grammar.add_nonterminal("Y");
+        let z = grammar.add_nonterminal("Z");
+        let a = grammar.add_terminal("a");
+        let b = grammar.add_terminal("b");
+        let c = grammar.add_terminal("c");
+        let d = grammar.add_terminal("d");
+
+        grammar.add_rule(start).nonterminal(x).nonterminal(y);
+        grammar.add_rule(start).nonterminal(x).nonterminal(z);
+        grammar.add_rule(x).terminal(d).nonterminal(x);
+        grammar.add_rule(x).terminal(d);
+        grammar.add_rule(y).nonterminal(y).terminal(a);
+        grammar.add_rule(y).terminal(b);
+        grammar.add_rule(z).nonterminal(z).terminal(c);
+        grammar.add_rule(z).terminal(d);
+
+        let grammar = grammar.validate().unwrap();
+
+        assert_eq!(vec![None], grammar.follow(start));
+        assert_eq!(vec![Some(b), Some(d)], grammar.follow(x));
+        assert_eq!(vec![None, Some(a)], grammar.follow(y));
+        assert_eq!(vec![None, Some(c)], grammar.follow(z));
     }
 }
