@@ -4,7 +4,8 @@
 //! Library for validating grammars and generating parse tables.
 
 mod cycle;
-use cycle::find_cycles;
+
+use crate::cycle::find_cycles;
 
 /// A context-free grammar.
 #[derive(Debug)]
@@ -78,11 +79,17 @@ impl Grammar {
         let firsts = self.calculate_firsts();
         let follows = self.calculate_follows(&firsts);
 
+        let mut rules = Vec::with_capacity(self.rules.len());
+        for rule in self.rules {
+            rules.push((rule.0, rule.1.into_boxed_slice()));
+        }
+
         Ok(ProperGrammar {
             nonterminals: self.nonterminals,
             terminals: self.terminals,
             firsts,
             follows,
+            rules: rules.into_boxed_slice(),
         })
     }
 
@@ -396,6 +403,8 @@ pub struct ProperGrammar {
     firsts: Vec<Vec<Terminal>>,
     // TODO: Again, consider the HashSet.
     follows: Vec<Vec<Option<Terminal>>>,
+
+    rules: Box<[(Nonterminal, Box<[Symbol]>)]>,
 }
 
 impl ProperGrammar {
@@ -459,4 +468,50 @@ pub enum Symbol {
 
     /// A terminal symbol.
     Terminal(Terminal),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Grammar, Symbol};
+
+    #[test]
+    fn proper_grammar_takes_grammar_rules() {
+        let (s, mut grammar) = Grammar::new();
+        // S -> X Y
+        // S -> X
+        // X -> c X b
+        // X -> d
+        // Y -> Y a
+        // Y -> b
+
+        let x = grammar.add_nonterminal("X");
+        let y = grammar.add_nonterminal("Y");
+        let a = grammar.add_terminal("a");
+        let b = grammar.add_terminal("b");
+        let c = grammar.add_terminal("c");
+
+        grammar.add_rule(s).nonterminal(x).nonterminal(y);
+        grammar.add_rule(s).nonterminal(x);
+        grammar.add_rule(x).terminal(c).nonterminal(x).terminal(b);
+        grammar.add_rule(x).terminal(c);
+        grammar.add_rule(y).nonterminal(y).terminal(a);
+        grammar.add_rule(y).terminal(b);
+
+        let grammar = grammar.validate().unwrap();
+
+        use Symbol::Nonterminal as N;
+        use Symbol::Terminal as T;
+
+        assert_eq!(
+            [
+                (s, vec![N(x), N(y)].into_boxed_slice()),
+                (s, vec![N(x)].into_boxed_slice()),
+                (x, vec![T(c), N(x), T(b)].into_boxed_slice()),
+                (x, vec![T(c)].into_boxed_slice()),
+                (y, vec![N(y), T(a)].into_boxed_slice()),
+                (y, vec![T(b)].into_boxed_slice()),
+            ],
+            grammar.rules.as_ref()
+        );
+    }
 }
