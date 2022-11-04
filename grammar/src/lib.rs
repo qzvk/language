@@ -5,7 +5,7 @@
 
 mod cycle;
 
-use std::iter::Chain;
+use std::{collections::HashMap, iter::Chain};
 
 use crate::cycle::find_cycles;
 
@@ -383,7 +383,7 @@ impl<'a> GrammarRule<'a> {
 }
 
 /// A nonterminal symbol of a grammar.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Nonterminal(u32);
 
 impl cycle::Node for Nonterminal {
@@ -393,7 +393,7 @@ impl cycle::Node for Nonterminal {
 }
 
 /// A terminal symbol of a grammar.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Terminal(u32);
 
 /// A proper context-free grammar. See [`Grammar::validate`].
@@ -444,23 +444,33 @@ impl ProperGrammar {
         }
     }
 
-    /// Generate the item sets for this grammar.
-    fn item_sets(&self) -> Vec<ItemSet> {
+    /// Generate the item sets for this grammar. The GOTO state function is also provided.
+    fn item_sets(&self) -> (Vec<ItemSet>, HashMap<(usize, Symbol), usize>) {
         let set_0 = self.closure(ItemSet::from(Item::Start));
         let mut collection = vec![set_0];
+        let mut gotos = HashMap::new();
 
         let mut changed = true;
         while changed {
             changed = false;
 
             // TODO: Not efficient, optimize this at some point.
-            let sets = collection.clone();
-            for set in sets {
+            let sets = collection.clone().into_iter().enumerate();
+            for (i, set) in sets {
                 for symbol in self.symbols() {
                     let goto_set = self.goto(&set, symbol);
-                    let is_empty = goto_set.is_empty();
-                    let already_seen = collection.contains(&goto_set);
-                    if !is_empty && !already_seen {
+                    if goto_set.is_empty() {
+                        continue;
+                    }
+
+                    if let Some(index) = collection.iter().position(|s| s == &goto_set) {
+                        // If we've seen this before, only add it as a GOTO.
+                        gotos.insert((i, symbol), index);
+                    } else {
+                        // Otherwise, add a GOTO and push the set onto the collection.
+                        let j = collection.len();
+                        gotos.insert((i, symbol), j);
+
                         collection.push(goto_set);
                         changed = true;
                     }
@@ -468,7 +478,7 @@ impl ProperGrammar {
             }
         }
 
-        collection
+        (collection, gotos)
     }
 
     fn symbols(&self) -> impl Iterator<Item = Symbol> {
@@ -568,7 +578,7 @@ pub enum Error {
 }
 
 /// A symbol of a grammar, either terminal or nonterminal.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Symbol {
     /// A nonterminal symbol.
     Nonterminal(Nonterminal),
@@ -632,8 +642,6 @@ impl<'a> From<Item<'a>> for ItemSet<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::ProperGrammar;
-
     use super::{Grammar, Item, ItemSet, Nonterminal, Symbol, Terminal};
 
     #[test]
@@ -857,7 +865,7 @@ mod tests {
         grammar.add_rule(start).terminal(a);
         let grammar = grammar.validate().unwrap();
 
-        let sets: Vec<ItemSet> = grammar.item_sets();
+        let (sets, gotos) = grammar.item_sets();
         assert_eq!(3, sets.len());
 
         // S' -> . S
@@ -873,6 +881,12 @@ mod tests {
         // S -> a .
         assert_eq!(1, sets[2].len());
         assert!(sets[2].contains(&Item::Rule(&grammar.rules[0], 1)));
+
+        // GOTO(0, S) = 1
+        // GOTO(0, a) = 2
+        assert_eq!(2, gotos.len());
+        assert_eq!(1, gotos[&(0, Symbol::Nonterminal(start))]);
+        assert_eq!(2, gotos[&(0, Symbol::Terminal(a))]);
     }
 
     #[test]
@@ -902,7 +916,7 @@ mod tests {
             .terminal(close);
         let grammar = grammar.validate().unwrap();
 
-        let sets: Vec<ItemSet> = grammar.item_sets();
+        let (sets, gotos) = grammar.item_sets();
         assert_eq!(9, sets.len());
 
         assert_eq!(5, sets[0].len());
@@ -944,5 +958,20 @@ mod tests {
 
         assert_eq!(1, sets[8].len());
         assert!(sets[8].contains(&Item::Rule(&grammar.rules[3], 3))); // Term -> ( Expr ) .
+
+        assert_eq!(14, gotos.len());
+        assert_eq!(1, gotos[&(0, Symbol::Nonterminal(expr))]);
+        assert_eq!(2, gotos[&(0, Symbol::Nonterminal(term))]);
+        assert_eq!(3, gotos[&(0, Symbol::Terminal(int))]);
+        assert_eq!(4, gotos[&(0, Symbol::Terminal(open))]);
+        assert_eq!(5, gotos[&(2, Symbol::Terminal(plus))]);
+        assert_eq!(6, gotos[&(4, Symbol::Nonterminal(expr))]);
+        assert_eq!(2, gotos[&(4, Symbol::Nonterminal(term))]);
+        assert_eq!(3, gotos[&(4, Symbol::Terminal(int))]);
+        assert_eq!(4, gotos[&(4, Symbol::Terminal(open))]);
+        assert_eq!(7, gotos[&(5, Symbol::Nonterminal(expr))]);
+        assert_eq!(2, gotos[&(5, Symbol::Nonterminal(term))]);
+        assert_eq!(3, gotos[&(5, Symbol::Terminal(int))]);
+        assert_eq!(8, gotos[&(6, Symbol::Terminal(close))]);
     }
 }
