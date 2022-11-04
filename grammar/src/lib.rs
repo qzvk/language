@@ -476,6 +476,22 @@ impl ProperGrammar {
 
         item_set
     }
+
+    fn next_item<'a>(&'a self, item: Item<'a>) -> Option<Item> {
+        match item {
+            Item::Start => Some(Item::End),
+
+            Item::End => None,
+
+            Item::Rule(rule, dot) => {
+                if rule.1.len() == dot {
+                    None
+                } else {
+                    Some(Item::Rule(rule, dot + 1))
+                }
+            }
+        }
+    }
 }
 
 /// An error in a non-proper grammar.
@@ -693,5 +709,30 @@ mod tests {
         let start = ItemSet::from(Item::Rule(&grammar.rules[0], 1));
         let actual = grammar.closure(start);
         assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn can_get_next_item() {
+        // S' -> S
+        // X -> a
+        let (s, mut grammar) = Grammar::new();
+        let a = grammar.add_terminal("a");
+        grammar.add_rule(s).terminal(a);
+        let grammar = grammar.validate().unwrap();
+
+        // S' -> . S ==> S' -> S .
+        assert_eq!(Some(Item::End), grammar.next_item(Item::Start));
+
+        // S' -> S . ==> (nothing)
+        assert_eq!(None, grammar.next_item(Item::End));
+
+        // S -> . a ==> S -> a .
+        assert_eq!(
+            Some(Item::Rule(&grammar.rules[0], 1)),
+            grammar.next_item(Item::Rule(&grammar.rules[0], 0))
+        );
+
+        // S -> a . ==> (nothing)
+        assert_eq!(None, grammar.next_item(Item::Rule(&grammar.rules[0], 1)));
     }
 }
