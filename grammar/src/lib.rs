@@ -492,6 +492,20 @@ impl ProperGrammar {
             }
         }
     }
+
+    fn goto<'a>(&'a self, item_set: &ItemSet<'a>, symbol: Symbol) -> ItemSet {
+        let mut goto_set = ItemSet::new();
+
+        for &item in &item_set.items {
+            if let (Some(next), Some(s)) = (self.next_item(item), self.next_symbol(item)) {
+                if symbol == s {
+                    goto_set.push(next);
+                }
+            }
+        }
+
+        self.closure(goto_set)
+    }
 }
 
 /// An error in a non-proper grammar.
@@ -567,6 +581,8 @@ impl<'a> From<Item<'a>> for ItemSet<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::ProperGrammar;
+
     use super::{Grammar, Item, ItemSet, Nonterminal, Symbol, Terminal};
 
     #[test]
@@ -734,5 +750,51 @@ mod tests {
 
         // S -> a . ==> (nothing)
         assert_eq!(None, grammar.next_item(Item::Rule(&grammar.rules[0], 1)));
+    }
+
+    #[test]
+    fn can_calculate_item_set_gotos() {
+        // S' -> S
+        // S -> a X
+        // X -> b
+        let (s, mut grammar) = Grammar::new();
+        let x = grammar.add_nonterminal("X");
+        let a = grammar.add_terminal("a");
+        let b = grammar.add_terminal("b");
+        grammar.add_rule(s).terminal(a).nonterminal(x);
+        grammar.add_rule(x).terminal(b);
+        let grammar = grammar.validate().unwrap();
+
+        // GOTO({S' -> . S}, S) = {S' -> S .}
+        assert_eq!(
+            ItemSet::from(Item::End),
+            grammar.goto(&ItemSet::from(Item::Start), Symbol::Nonterminal(s))
+        );
+
+        // GOTO({S' -> S .}, a) = { }
+        assert_eq!(
+            ItemSet::new(),
+            grammar.goto(&ItemSet::from(Item::Start), Symbol::Terminal(a))
+        );
+
+        // {S -> a . X, X -> . b}
+        let example = {
+            let mut set = ItemSet::new();
+            set.push(Item::Rule(&grammar.rules[0], 1));
+            set.push(Item::Rule(&grammar.rules[1], 0));
+            set
+        };
+
+        // GOTO({S -> a . X, X -> . b}, X) = {S -> a X .}
+        assert_eq!(
+            ItemSet::from(Item::Rule(&grammar.rules[0], 2)),
+            grammar.goto(&example, Symbol::Nonterminal(x))
+        );
+
+        // GOTO({S -> a . X, X -> . b}, b) = {X -> b .}
+        assert_eq!(
+            ItemSet::from(Item::Rule(&grammar.rules[1], 1)),
+            grammar.goto(&example, Symbol::Terminal(b))
+        );
     }
 }
