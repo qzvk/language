@@ -5,6 +5,8 @@
 
 mod cycle;
 
+use std::iter::Chain;
+
 use crate::cycle::find_cycles;
 
 /// A context-free grammar.
@@ -442,6 +444,47 @@ impl ProperGrammar {
         }
     }
 
+    /// Generate the item sets for this grammar.
+    fn item_sets(&self) -> Vec<ItemSet> {
+        let set_0 = self.closure(ItemSet::from(Item::Start));
+        let mut collection = vec![set_0];
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+
+            // TODO: Not efficient, optimize this at some point.
+            let sets = collection.clone();
+            for set in sets {
+                for symbol in self.symbols() {
+                    let goto_set = self.goto(&set, symbol);
+                    let is_empty = goto_set.is_empty();
+                    let already_seen = collection.contains(&goto_set);
+                    if !is_empty && !already_seen {
+                        collection.push(goto_set);
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        collection
+    }
+
+    fn symbols(&self) -> impl Iterator<Item = Symbol> {
+        let nonterminals = (0..self.nonterminals.len()).map(|index| {
+            let symbol = Nonterminal(index as u32);
+            Symbol::Nonterminal(symbol)
+        });
+
+        let terminals = (0..self.terminals.len()).map(|index| {
+            let symbol = Terminal(index as u32);
+            Symbol::Terminal(symbol)
+        });
+
+        nonterminals.chain(terminals)
+    }
+
     /// Return the symbol after the dot for the given item.
     fn next_symbol(&self, item: Item) -> Option<Symbol> {
         match item {
@@ -547,7 +590,7 @@ enum Item<'a> {
 }
 
 // TODO: Consider not storing non-kernel items?
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct ItemSet<'a> {
     // TODO: Consider using a HashSet?
     items: Vec<Item<'a>>,
@@ -556,6 +599,10 @@ struct ItemSet<'a> {
 impl<'a> ItemSet<'a> {
     pub fn new() -> Self {
         Self { items: Vec::new() }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.len() == 0
     }
 
     pub fn len(&self) -> usize {
@@ -570,6 +617,10 @@ impl<'a> ItemSet<'a> {
         } else {
             false
         }
+    }
+
+    pub fn contains(&self, item: &Item) -> bool {
+        self.items.binary_search(item).is_ok()
     }
 }
 
@@ -796,5 +847,102 @@ mod tests {
             ItemSet::from(Item::Rule(&grammar.rules[1], 1)),
             grammar.goto(&example, Symbol::Terminal(b))
         );
+    }
+
+    #[test]
+    fn can_generate_item_sets_for_minimal_grammar() {
+        // S -> a
+        let (start, mut grammar) = Grammar::new();
+        let a = grammar.add_terminal("a");
+        grammar.add_rule(start).terminal(a);
+        let grammar = grammar.validate().unwrap();
+
+        let sets: Vec<ItemSet> = grammar.item_sets();
+        assert_eq!(3, sets.len());
+
+        // S' -> . S
+        // S -> . a
+        assert_eq!(2, sets[0].len());
+        assert!(sets[0].contains(&Item::Start));
+        assert!(sets[0].contains(&Item::Rule(&grammar.rules[0], 0)));
+
+        // S' -> S .
+        assert_eq!(1, sets[1].len());
+        assert!(sets[1].contains(&Item::End));
+
+        // S -> a .
+        assert_eq!(1, sets[2].len());
+        assert!(sets[2].contains(&Item::Rule(&grammar.rules[0], 1)));
+    }
+
+    #[test]
+    fn can_generate_item_sets_for_simple_grammar() {
+        // S' -> Expr
+        // Expr -> Term + Expr
+        // Expr -> Term
+        // Term -> int
+        // Term -> ( Expr )
+        let (expr, mut grammar) = Grammar::new();
+        let term = grammar.add_nonterminal("Term");
+        let plus = grammar.add_terminal("+");
+        let int = grammar.add_terminal("int");
+        let open = grammar.add_terminal("(");
+        let close = grammar.add_terminal(")");
+        grammar
+            .add_rule(expr)
+            .nonterminal(term)
+            .terminal(plus)
+            .nonterminal(expr);
+        grammar.add_rule(expr).nonterminal(term);
+        grammar.add_rule(term).terminal(int);
+        grammar
+            .add_rule(term)
+            .terminal(open)
+            .nonterminal(expr)
+            .terminal(close);
+        let grammar = grammar.validate().unwrap();
+
+        let sets: Vec<ItemSet> = grammar.item_sets();
+        assert_eq!(9, sets.len());
+
+        assert_eq!(5, sets[0].len());
+        assert!(sets[0].contains(&Item::Start)); // S' -> . Expr
+        assert!(sets[0].contains(&Item::Rule(&grammar.rules[0], 0))); // Expr -> . Term + Expr
+        assert!(sets[0].contains(&Item::Rule(&grammar.rules[1], 0))); // Expr -> . Term
+        assert!(sets[0].contains(&Item::Rule(&grammar.rules[2], 0))); // Term -> . int
+        assert!(sets[0].contains(&Item::Rule(&grammar.rules[3], 0))); // Term -> . ( Expr )
+
+        assert_eq!(1, sets[1].len());
+        assert!(sets[1].contains(&Item::End)); // S' -> Expr .
+
+        assert_eq!(2, sets[2].len());
+        assert!(sets[2].contains(&Item::Rule(&grammar.rules[0], 1))); // Expr -> Term . + Expr
+        assert!(sets[2].contains(&Item::Rule(&grammar.rules[1], 1))); // Expr -> Term .
+
+        assert_eq!(1, sets[3].len());
+        assert!(sets[3].contains(&Item::Rule(&grammar.rules[2], 1))); // Term -> int .
+
+        assert_eq!(5, sets[4].len());
+        assert!(sets[4].contains(&Item::Rule(&grammar.rules[3], 1))); // Term -> ( . Expr )
+        assert!(sets[4].contains(&Item::Rule(&grammar.rules[0], 0))); // Expr -> . Term + Expr
+        assert!(sets[4].contains(&Item::Rule(&grammar.rules[1], 0))); // Expr -> . Term
+        assert!(sets[4].contains(&Item::Rule(&grammar.rules[2], 0))); // Term -> . int
+        assert!(sets[4].contains(&Item::Rule(&grammar.rules[3], 0))); // Term -> . ( Expr )
+
+        assert_eq!(5, sets[5].len());
+        assert!(sets[5].contains(&Item::Rule(&grammar.rules[0], 2))); // Expr -> Term + . Expr
+        assert!(sets[5].contains(&Item::Rule(&grammar.rules[0], 0))); // Expr -> . Term + Expr
+        assert!(sets[5].contains(&Item::Rule(&grammar.rules[1], 0))); // Expr -> . Term
+        assert!(sets[5].contains(&Item::Rule(&grammar.rules[2], 0))); // Term -> . int
+        assert!(sets[5].contains(&Item::Rule(&grammar.rules[3], 0))); // Term -> . ( Expr )
+
+        assert_eq!(1, sets[6].len());
+        assert!(sets[6].contains(&Item::Rule(&grammar.rules[3], 2))); // Term -> ( Expr . )
+
+        assert_eq!(1, sets[7].len());
+        assert!(sets[7].contains(&Item::Rule(&grammar.rules[0], 3))); // Expr -> Term + Expr .
+
+        assert_eq!(1, sets[8].len());
+        assert!(sets[8].contains(&Item::Rule(&grammar.rules[3], 3))); // Term -> ( Expr ) .
     }
 }
