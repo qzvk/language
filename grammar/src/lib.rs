@@ -403,7 +403,6 @@ pub struct ProperGrammar {
     firsts: Vec<Vec<Terminal>>,
     // TODO: Again, consider the HashSet.
     follows: Vec<Vec<Option<Terminal>>>,
-
     rules: Box<[(Nonterminal, Box<[Symbol]>)]>,
 }
 
@@ -442,6 +441,41 @@ impl ProperGrammar {
             Symbol::Terminal(t) => self.terminal_name(t),
         }
     }
+
+    /// Return the symbol after the dot for the given item.
+    fn next_symbol(&self, item: Item) -> Option<Symbol> {
+        match item {
+            Item::Start => {
+                const START: Nonterminal = Nonterminal(0);
+                Some(Symbol::Nonterminal(START))
+            }
+
+            Item::End => None,
+
+            Item::Rule((_, body), dot) => body.get(dot).cloned(),
+        }
+    }
+
+    fn closure<'a>(&'a self, mut item_set: ItemSet<'a>) -> ItemSet {
+        let mut changed = true;
+        while changed {
+            changed = false;
+
+            // TODO: This is really inefficient, and should be optimized at some point.
+            for item in item_set.items.clone() {
+                if let Some(Symbol::Nonterminal(n)) = self.next_symbol(item) {
+                    for rule in self.rules.iter() {
+                        if rule.0 == n {
+                            let new_item = Item::Rule(rule, 0);
+                            changed |= item_set.push(new_item);
+                        }
+                    }
+                }
+            }
+        }
+
+        item_set
+    }
 }
 
 /// An error in a non-proper grammar.
@@ -470,9 +504,54 @@ pub enum Symbol {
     Terminal(Terminal),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Item<'a> {
+    /// The item `S' -> . S`.
+    Start,
+
+    /// The item `S' -> S .`
+    End,
+
+    /// A non-start item.
+    Rule(&'a (Nonterminal, Box<[Symbol]>), usize),
+}
+
+// TODO: Consider not storing non-kernel items?
+#[derive(Debug, PartialEq)]
+struct ItemSet<'a> {
+    // TODO: Consider using a HashSet?
+    items: Vec<Item<'a>>,
+}
+
+impl<'a> ItemSet<'a> {
+    pub fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    /// Push an item into the set, returning whether it was newly inserted.
+    pub fn push(&mut self, item: Item<'a>) -> bool {
+        if let Err(index) = self.items.binary_search(&item) {
+            self.items.insert(index, item);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl<'a> From<Item<'a>> for ItemSet<'a> {
+    fn from(item: Item<'a>) -> Self {
+        Self { items: vec![item] }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Grammar, Symbol};
+    use super::{Grammar, Item, ItemSet, Nonterminal, Symbol, Terminal};
 
     #[test]
     fn proper_grammar_takes_grammar_rules() {
@@ -513,5 +592,106 @@ mod tests {
             ],
             grammar.rules.as_ref()
         );
+    }
+
+    #[test]
+    fn can_get_subsequent_nonterminal_from_item() {
+        let (s, mut grammar) = Grammar::new();
+        let x = grammar.add_nonterminal("X");
+        let a = grammar.add_terminal("a");
+        grammar.add_rule(s).terminal(a).nonterminal(x);
+        grammar.add_rule(x).terminal(a);
+        let grammar = grammar.validate().unwrap();
+
+        // S' -> . S ==> S
+        let expected = grammar.next_symbol(Item::Start);
+        assert_eq!(Some(Symbol::Nonterminal(s)), expected);
+
+        // S' -> S' S . ==> (nothing)
+        let expected = grammar.next_symbol(Item::End);
+        assert_eq!(None, expected);
+
+        // S -> a . X ==> X
+        let expected = grammar.next_symbol(Item::Rule(&grammar.rules[0], 1));
+        assert_eq!(Some(Symbol::Nonterminal(x)), expected);
+
+        // X -> . a ==> a
+        let expected = grammar.next_symbol(Item::Rule(&grammar.rules[1], 0));
+        assert_eq!(Some(Symbol::Terminal(a)), expected);
+
+        // X -> b . ==> (nothing)
+        let expected = grammar.next_symbol(Item::Rule(&grammar.rules[1], 1));
+        assert_eq!(None, expected);
+    }
+
+    #[test]
+    fn can_push_to_item_set() {
+        let mut set = ItemSet::new();
+        assert_eq!(0, set.len());
+
+        assert!(set.push(Item::Start));
+        assert_eq!(1, set.len());
+
+        assert!(!set.push(Item::Start));
+        assert_eq!(1, set.len());
+
+        assert!(set.push(Item::End));
+        assert_eq!(2, set.len());
+
+        let rule = (
+            Nonterminal(0),
+            vec![Symbol::Terminal(Terminal(0))].into_boxed_slice(),
+        );
+
+        assert!(set.push(Item::Rule(&rule, 0)));
+        assert!(set.push(Item::Rule(&rule, 1)));
+        assert_eq!(4, set.len());
+    }
+
+    #[test]
+    fn can_take_closure_of_items() {
+        // S -> a X
+        // S -> Y a
+        // X -> b Y
+        // Y -> a
+
+        let (s, mut grammar) = Grammar::new();
+        let x = grammar.add_nonterminal("X");
+        let y = grammar.add_nonterminal("Y");
+        let a = grammar.add_terminal("a");
+        let b = grammar.add_terminal("b");
+        grammar.add_rule(s).terminal(a).nonterminal(x);
+        grammar.add_rule(s).nonterminal(y).terminal(a);
+        grammar.add_rule(x).terminal(b).nonterminal(y);
+        grammar.add_rule(y).terminal(a);
+        let grammar = grammar.validate().unwrap();
+
+        // S' -> . S
+        // S -> . a X
+        // S -> . Y a
+        // Y -> . a
+        let expected = {
+            let mut set = ItemSet::new();
+            set.push(Item::Start);
+            set.push(Item::Rule(&grammar.rules[0], 0));
+            set.push(Item::Rule(&grammar.rules[1], 0));
+            set.push(Item::Rule(&grammar.rules[3], 0));
+            set
+        };
+        let start = ItemSet::from(Item::Start);
+        let actual = grammar.closure(start);
+        assert_eq!(expected, actual);
+
+        // S -> a . X
+        // X -> . b Y
+        let expected = {
+            let mut set = ItemSet::new();
+            set.push(Item::Rule(&grammar.rules[0], 1));
+            set.push(Item::Rule(&grammar.rules[2], 0));
+            set
+        };
+        let start = ItemSet::from(Item::Rule(&grammar.rules[0], 1));
+        let actual = grammar.closure(start);
+        assert_eq!(expected, actual);
     }
 }
