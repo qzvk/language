@@ -5,7 +5,7 @@
 
 mod cycle;
 
-use std::{collections::HashMap, iter::Chain};
+use std::collections::HashMap;
 
 use crate::cycle::find_cycles;
 
@@ -445,7 +445,7 @@ impl ProperGrammar {
     }
 
     /// Generate the item sets for this grammar. The GOTO state function is also provided.
-    fn item_sets(&self) -> (Vec<ItemSet>, HashMap<(usize, Symbol), usize>) {
+    pub fn item_sets(&self) -> (Vec<ItemSet>, HashMap<(usize, Symbol), usize>) {
         let set_0 = self.closure(ItemSet::from(Item::Start));
         let mut collection = vec![set_0];
         let mut gotos = HashMap::new();
@@ -587,8 +587,9 @@ pub enum Symbol {
     Terminal(Terminal),
 }
 
+/// A grammar item, representing a partially parsed production rule.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum Item<'a> {
+pub enum Item<'a> {
     /// The item `S' -> . S`.
     Start,
 
@@ -599,22 +600,26 @@ enum Item<'a> {
     Rule(&'a (Nonterminal, Box<[Symbol]>), usize),
 }
 
-// TODO: Consider not storing non-kernel items?
-#[derive(Clone, Debug, PartialEq)]
-struct ItemSet<'a> {
+/// A set of grammar items.
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub struct ItemSet<'a> {
+    // TODO: Consider not storing non-kernel items?
     // TODO: Consider using a HashSet?
     items: Vec<Item<'a>>,
 }
 
 impl<'a> ItemSet<'a> {
+    /// Create a new, empty set.
     pub fn new() -> Self {
-        Self { items: Vec::new() }
+        Self::default()
     }
 
+    /// Whether the set contains zero elements.
     pub fn is_empty(&self) -> bool {
         self.items.len() == 0
     }
 
+    /// The number of items the set contains.
     pub fn len(&self) -> usize {
         self.items.len()
     }
@@ -629,8 +634,19 @@ impl<'a> ItemSet<'a> {
         }
     }
 
+    /// Whether the set contains the given item.
     pub fn contains(&self, item: &Item) -> bool {
         self.items.binary_search(item).is_ok()
+    }
+}
+
+impl<'a> IntoIterator for ItemSet<'a> {
+    type Item = Item<'a>;
+
+    type IntoIter = <Vec<Item<'a>> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.items.into_iter()
     }
 }
 

@@ -87,6 +87,9 @@ fn generate_grammar() -> ProperGrammar {
     grammar.add_rule(mul_op).terminal(asterisk);
     grammar.add_rule(mul_op).terminal(slash);
 
+    println!("################################################################################");
+    println!("#                                    Grammar                                   #");
+    println!("################################################################################");
     print!("{}", grammar);
 
     let proper_grammar = grammar.validate().unwrap();
@@ -115,6 +118,11 @@ fn generate_grammar() -> ProperGrammar {
         mul_op,
     ];
 
+    println!();
+    println!("################################################################################");
+    println!("#                                    Firsts                                    #");
+    println!("################################################################################");
+
     for n in terminals
         .into_iter()
         .map(Symbol::Terminal)
@@ -130,6 +138,11 @@ fn generate_grammar() -> ProperGrammar {
         println!("}}");
     }
 
+    println!();
+    println!("################################################################################");
+    println!("#                                    Follows                                   #");
+    println!("################################################################################");
+
     for n in nonterminals {
         let name = proper_grammar.nonterminal_name(n);
         print!("FOLLOW({name}) = {{ ");
@@ -142,6 +155,47 @@ fn generate_grammar() -> ProperGrammar {
             print!("{name}, ");
         }
         println!("}}");
+    }
+
+    let (item_sets, gotos) = proper_grammar.item_sets();
+
+    println!();
+    println!("################################################################################");
+    println!("#                                   Item sets                                  #");
+    println!("################################################################################");
+
+    for (i, set) in item_sets.into_iter().enumerate() {
+        println!("{i}:");
+        for item in set.into_iter() {
+            print!("    ");
+            match item {
+                grammar::Item::Start => println!("S' -> . start"),
+
+                grammar::Item::End => println!("S' -> start ."),
+
+                grammar::Item::Rule((head, body), dot) => {
+                    print!("{} ->", proper_grammar.nonterminal_name(*head));
+                    for i in 0..dot {
+                        print!(" {}", proper_grammar.symbol_name(body[i]));
+                    }
+                    print!(" .");
+                    for i in dot..body.len() {
+                        print!(" {}", proper_grammar.symbol_name(body[i]));
+                    }
+                    println!();
+                }
+            }
+        }
+    }
+
+    println!();
+    println!("################################################################################");
+    println!("#                                     GOTOs                                    #");
+    println!("################################################################################");
+
+    for ((from, symbol), to) in gotos {
+        let name = proper_grammar.symbol_name(symbol);
+        println!("GOTO({from}, {name}) = {to}");
     }
 
     proper_grammar
