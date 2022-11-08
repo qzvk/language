@@ -406,6 +406,26 @@ fn can_generate_parse_table_for_simple_grammar() {
 
     for &(state, input, expected) in actions {
         let actual = table.action(state, input);
-        assert_eq!(expected, actual, "state: {state:?}, input: {input:?}");
+        assert_eq!(expected, actual, "state: {state}, input: {input:?}");
+    }
+
+    let gotos: &[(usize, Nonterminal, usize)] = &[
+        (0, expr, 1),
+        (0, term, 2),
+        (0, factor, 3),
+        (5, expr, 8),
+        (5, term, 2),
+        (5, factor, 3),
+        (6, term, 9),
+        (6, factor, 3),
+        (7, factor, 10),
+    ];
+
+    for &(state, nonterminal, expected) in gotos {
+        let actual = table.goto(state, nonterminal);
+        assert_eq!(
+            expected, actual,
+            "state: {state}, nonterminal: {nonterminal:?}"
+        );
     }
 }
