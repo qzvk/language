@@ -797,21 +797,18 @@ impl ParseTable {
                 }
 
                 ParseAction::Reduce(a, len) => {
-                    let mut items = Vec::with_capacity(len);
+                    let mut subtrees = Vec::with_capacity(len);
+                    let remove_index = stack.len() - len;
                     for _ in 0..len {
-                        let (item, _) = stack.pop().unwrap();
-                        items.push(item);
+                        let (item, _) = stack.remove(remove_index);
+                        subtrees.push(item);
                     }
-                    items.reverse();
 
-                    let item = ParseTree::Nonterminal(a, items);
+                    let tree = ParseTree::Nonterminal(a, subtrees);
 
-                    let (_, t) = stack
-                        .last()
-                        .cloned()
-                        .unwrap_or((ParseTree::Terminal(Terminal(0)), 0));
+                    let (_, t) = stack.last().cloned().unwrap();
 
-                    stack.push((item, self.goto(t, a)));
+                    stack.push((tree, self.goto(t, a)));
                 }
 
                 ParseAction::Error => todo!("Handling errors during parsing is not implemented."),
@@ -819,6 +816,9 @@ impl ParseTable {
                 ParseAction::Accept => break,
             }
         }
+
+        // Check that the stack contains the 'dummy' start state's tree, and the final result tree.
+        assert_eq!(2, stack.len());
 
         stack.pop().unwrap().0
     }
