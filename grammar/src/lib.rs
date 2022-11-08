@@ -559,6 +559,94 @@ impl ProperGrammar {
 
         self.closure(goto_set)
     }
+
+    /// Generate an SLR parse table for the grammar. (TODO: LALR parse table generation.)
+    pub fn parse_table(&self) -> Result<ParseTable, ()> {
+        let mut actions = HashMap::new();
+        // TODO: Consider splitting GOTO into separate terminal and nonterminal lookups.
+        let (items, gotos) = self.item_sets();
+
+        // For each item set in the collection.
+        for (i, set) in items.into_iter().enumerate() {
+            // All else is error.
+
+            for item in set {
+                match item {
+                    Item::Start => { /* no processing needed for S' -> . S */ }
+
+                    // If S' -> S . in this set, action[i, $] is accept.
+                    Item::End => {
+                        // TODO: Handle conflict properly.
+                        let old = actions.insert((i, None), ParseAction::Accept);
+                        if let Some(x) = old {
+                            panic!("Conflict with Accept onto {x:?} @ set {i}, S' -> S.")
+                        }
+                    }
+
+                    Item::Rule((head, body), dot) => {
+                        if dot == body.len() {
+                            // If A -> _ . in this set, then action[i, a] = reduce A -> _ for all a in FOLLOW(A).
+
+                            for a in self.follow(*head) {
+                                let action = ParseAction::Reduce(*head, body.len());
+                                let old = actions.insert((i, a), action);
+                                // TODO: Handle conflict properly.
+                                if let Some(x) = old {
+                                    let len = body.len();
+                                    panic!("Conflict with Reduce({head:?},{len}) onto {x:?} @ set {i}, {item:?}")
+                                }
+                            }
+                        } else if let Symbol::Terminal(a) = body[dot] {
+                            // If A -> _ . a _ in this set and GOTO(i, a) = j, then action[i, a] = shift j. a is a terminal
+
+                            let j = gotos[&(i, Symbol::Terminal(a))];
+                            let old = actions.insert((i, Some(a)), ParseAction::Shift(j));
+                            // TODO: Handle conflict properly.
+                            if let Some(x) = old {
+                                panic!("Conflict with Shift({j}) onto {x:?} @ set {i}, {item:?}")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(ParseTable {
+            actions,
+            gotos: Self::nonterminal_gotos(gotos),
+        })
+    }
+
+    /// Remove nonterminals from a GOTO map.
+    fn nonterminal_gotos(
+        symbols: HashMap<(usize, Symbol), usize>,
+    ) -> HashMap<(usize, Nonterminal), usize> {
+        let mut nonterminals = HashMap::new();
+
+        for ((state, symbol), next_state) in symbols {
+            if let Symbol::Nonterminal(nonterminal) = symbol {
+                nonterminals.insert((state, nonterminal), next_state);
+            }
+        }
+
+        nonterminals
+    }
+}
+
+/// An action performable by a shift-reduce parser.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParseAction {
+    /// Shift a token from the input, pushing this state onto the stack.
+    Shift(usize),
+
+    /// Reduce this many symbols into the nonterminal.
+    Reduce(Nonterminal, usize),
+
+    /// The syntax of the input is incorrect.
+    Error,
+
+    /// The input should be accepted.
+    Accept,
 }
 
 /// An error in a non-proper grammar.
@@ -653,6 +741,29 @@ impl<'a> IntoIterator for ItemSet<'a> {
 impl<'a> From<Item<'a>> for ItemSet<'a> {
     fn from(item: Item<'a>) -> Self {
         Self { items: vec![item] }
+    }
+}
+
+/// A parse table used for shift/reduce decisions during parsing.
+#[derive(Debug)]
+pub struct ParseTable {
+    // TODO: Consider 2D arrays? Benchmark
+    actions: HashMap<(usize, Option<Terminal>), ParseAction>,
+    gotos: HashMap<(usize, Nonterminal), usize>,
+}
+
+impl ParseTable {
+    /// The corresponding action for the given state and input. `None` represents the endmarker.
+    pub fn action(&self, state: usize, input: Option<Terminal>) -> ParseAction {
+        self.actions
+            .get(&(state, input))
+            .cloned()
+            .unwrap_or(ParseAction::Error)
+    }
+
+    /// The state to transition to given an input and state.
+    pub fn goto(&self, state: usize, input: Nonterminal) -> usize {
+        self.gotos[&(state, input)]
     }
 }
 

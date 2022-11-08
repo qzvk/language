@@ -1,4 +1,6 @@
-use grammar::{Error, Grammar, Nonterminal, ProperGrammar, Symbol, Terminal};
+use grammar::{
+    Error, Grammar, Nonterminal, ParseAction, ParseTable, ProperGrammar, Symbol, Terminal,
+};
 
 #[test]
 fn can_create_grammar() {
@@ -302,4 +304,108 @@ fn can_get_symbol_names() {
         proper_grammar.symbol_name(Symbol::Nonterminal(s))
     );
     assert_eq!("Terminal2", proper_grammar.symbol_name(Symbol::Terminal(u)));
+}
+
+#[test]
+fn can_generate_parse_table_for_minimal_grammar() {
+    // S -> a
+    let (s, mut grammar) = Grammar::new();
+    let a = grammar.add_terminal("a");
+    grammar.add_rule(s).terminal(a);
+    let grammar = grammar.validate().unwrap();
+
+    let table: ParseTable = grammar.parse_table().unwrap();
+
+    assert_eq!(ParseAction::Shift(2), table.action(0, Some(a)));
+    assert_eq!(ParseAction::Error, table.action(0, None));
+    assert_eq!(ParseAction::Error, table.action(1, Some(a)));
+    assert_eq!(ParseAction::Accept, table.action(1, None));
+    assert_eq!(ParseAction::Error, table.action(2, Some(a)));
+    assert_eq!(ParseAction::Reduce(s, 1), table.action(2, None));
+
+    assert_eq!(1, table.goto(0, s));
+}
+
+#[test]
+fn can_generate_parse_table_for_simple_grammar() {
+    // S' -> E
+    // E -> E + T
+    // E -> T
+    // T -> T * F
+    // T -> F
+    // F -> x
+    // F -> ( E )
+    let (expr, mut grammar) = Grammar::new();
+    let term = grammar.add_nonterminal("T");
+    let factor = grammar.add_nonterminal("F");
+    let plus = grammar.add_terminal("+");
+    let asterisk = grammar.add_terminal("*");
+    let x = grammar.add_terminal("x");
+    let open = grammar.add_terminal("(");
+    let close = grammar.add_terminal(")");
+    grammar
+        .add_rule(expr)
+        .nonterminal(expr)
+        .terminal(plus)
+        .nonterminal(term);
+    grammar.add_rule(expr).nonterminal(term);
+    grammar
+        .add_rule(term)
+        .nonterminal(term)
+        .terminal(asterisk)
+        .nonterminal(factor);
+    grammar.add_rule(term).nonterminal(factor);
+    grammar.add_rule(factor).terminal(x);
+    grammar
+        .add_rule(factor)
+        .terminal(open)
+        .nonterminal(expr)
+        .terminal(close);
+    let grammar = grammar.validate().unwrap();
+    let table = grammar.parse_table().unwrap();
+
+    use ParseAction::*;
+    let actions: &[(usize, Option<Terminal>, ParseAction)] = &[
+        (0, Some(x), Shift(4)),
+        (0, Some(open), Shift(5)),
+        (1, Some(plus), Shift(6)),
+        (1, None, Accept),
+        (2, Some(plus), Reduce(expr, 1)),
+        (2, Some(asterisk), Shift(7)),
+        (2, Some(close), Reduce(expr, 1)),
+        (2, None, Reduce(expr, 1)),
+        (3, Some(plus), Reduce(term, 1)),
+        (3, Some(asterisk), Reduce(term, 1)),
+        (3, Some(close), Reduce(term, 1)),
+        (3, None, Reduce(term, 1)),
+        (4, Some(plus), Reduce(factor, 1)),
+        (4, Some(asterisk), Reduce(factor, 1)),
+        (4, Some(close), Reduce(factor, 1)),
+        (4, None, Reduce(factor, 1)),
+        (5, Some(x), Shift(4)),
+        (5, Some(open), Shift(5)),
+        (6, Some(x), Shift(4)),
+        (6, Some(open), Shift(5)),
+        (7, Some(x), Shift(4)),
+        (7, Some(open), Shift(5)),
+        (8, Some(plus), Shift(6)),
+        (8, Some(close), Shift(11)),
+        (9, Some(plus), Reduce(expr, 3)),
+        (9, Some(asterisk), Shift(7)),
+        (9, Some(close), Reduce(expr, 3)),
+        (9, None, Reduce(expr, 3)),
+        (10, Some(plus), Reduce(term, 3)),
+        (10, Some(asterisk), Reduce(term, 3)),
+        (10, Some(close), Reduce(term, 3)),
+        (10, None, Reduce(term, 3)),
+        (11, Some(plus), Reduce(factor, 3)),
+        (11, Some(asterisk), Reduce(factor, 3)),
+        (11, Some(close), Reduce(factor, 3)),
+        (11, None, Reduce(factor, 3)),
+    ];
+
+    for &(state, input, expected) in actions {
+        let actual = table.action(state, input);
+        assert_eq!(expected, actual, "state: {state:?}, input: {input:?}");
+    }
 }
