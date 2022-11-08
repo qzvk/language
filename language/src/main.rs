@@ -2,9 +2,9 @@
 
 use std::io::{stdin, Read};
 
-use grammar::{Grammar, ProperGrammar, Symbol};
+use grammar::{Grammar, ParseTable, Symbol};
 
-fn generate_grammar() -> ProperGrammar {
+fn generate_parse_table() -> ParseTable {
     let (document, mut grammar) = Grammar::new();
 
     let plus = grammar.add_terminal("'+'");
@@ -20,7 +20,6 @@ fn generate_grammar() -> ProperGrammar {
 
     let assignment_seq = grammar.add_nonterminal("assignment-seq");
     let assignment = grammar.add_nonterminal("assignment");
-    let ident_seq = grammar.add_nonterminal("ident-seq");
     let add_expr = grammar.add_nonterminal("add-expr");
     let mul_expr = grammar.add_nonterminal("mul-expr");
     let apply_expr = grammar.add_nonterminal("apply-expr");
@@ -28,30 +27,23 @@ fn generate_grammar() -> ProperGrammar {
     let add_op = grammar.add_nonterminal("add-op");
     let mul_op = grammar.add_nonterminal("mul-op");
 
-    grammar.add_rule(document).nonterminal(add_expr);
-    grammar
-        .add_rule(document)
-        .nonterminal(assignment_seq)
-        .nonterminal(add_expr);
+    grammar.add_rule(document).nonterminal(assignment_seq);
 
     grammar.add_rule(assignment_seq).nonterminal(assignment);
     grammar
         .add_rule(assignment_seq)
         .nonterminal(assignment)
+        .terminal(semicolon)
         .nonterminal(assignment_seq);
 
     grammar
         .add_rule(assignment)
-        .nonterminal(ident_seq)
+        .nonterminal(apply_expr)
         .terminal(equals)
-        .nonterminal(add_expr)
-        .terminal(semicolon);
-
-    grammar.add_rule(ident_seq).terminal(ident);
+        .nonterminal(add_expr);
     grammar
-        .add_rule(ident_seq)
-        .terminal(ident)
-        .nonterminal(ident_seq);
+        .add_rule(assignment)
+        .nonterminal(add_expr);
 
     grammar
         .add_rule(add_expr)
@@ -109,7 +101,6 @@ fn generate_grammar() -> ProperGrammar {
         document,
         assignment_seq,
         assignment,
-        ident_seq,
         add_expr,
         mul_expr,
         apply_expr,
@@ -198,11 +189,13 @@ fn generate_grammar() -> ProperGrammar {
         println!("GOTO({from}, {name}) = {to}");
     }
 
-    proper_grammar
+    let table = proper_grammar.parse_table().unwrap();
+
+    table
 }
 
 fn main() {
-    let _grammar = generate_grammar();
+    let _table = generate_parse_table();
 
     let mut input = String::new();
     stdin().read_to_string(&mut input).unwrap();

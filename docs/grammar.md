@@ -2,19 +2,15 @@ The grammar of the language described in McKeeman form:
 
 ```
 start
-    add-expr
-    assignment-seq add-expr
+    assignment-seq
 
 assignment-seq
     assignment
-    assignment assignment-seq
+    assignment ';' assignment-seq
 
 assignment
-    ident-seq '=' add-expr ';'
-
-ident-seq
-    ident
-    ident ident-seq
+    apply-expr '=' add-expr
+    add-expr
 
 add-expr
     add-expr add-op mul-expr
