@@ -5,9 +5,8 @@
 
 mod cycle;
 
-use std::collections::HashMap;
-
 use crate::cycle::find_cycles;
+use std::collections::HashMap;
 
 /// A context-free grammar.
 #[derive(Debug)]
@@ -561,7 +560,7 @@ impl ProperGrammar {
     }
 
     /// Generate an SLR parse table for the grammar. (TODO: LALR parse table generation.)
-    pub fn parse_table(&self) -> Result<ParseTable, ()> {
+    pub fn parse_table(&self) -> Result<ParseTable, ParseTableConflict> {
         let mut actions = HashMap::new();
         // TODO: Consider splitting GOTO into separate terminal and nonterminal lookups.
         let (items, gotos) = self.item_sets();
@@ -576,10 +575,10 @@ impl ProperGrammar {
 
                     // If S' -> S . in this set, action[i, $] is accept.
                     Item::End => {
-                        // TODO: Handle conflict properly.
                         let old = actions.insert((i, None), ParseAction::Accept);
-                        if let Some(x) = old {
-                            panic!("Conflict with Accept onto {x:?} @ set {i}, S' -> S.")
+                        match old {
+                            Some(ParseAction::Accept) | None => {}
+                            _ => panic!("Accept conflicts should not be possible, this is a bug."),
                         }
                     }
 
@@ -590,20 +589,22 @@ impl ProperGrammar {
                             for a in self.follow(*head) {
                                 let action = ParseAction::Reduce(*head, body.len());
                                 let old = actions.insert((i, a), action);
-                                // TODO: Handle conflict properly.
-                                if let Some(x) = old {
-                                    let len = body.len();
-                                    panic!("Conflict with Reduce({head:?},{len}) onto {x:?} @ set {i}, {item:?}")
+                                if old.is_some() {
+                                    // Just overwrote a different action, this is a conflict.
+                                    return Err(ParseTableConflict::ReduceReduce);
                                 }
                             }
                         } else if let Symbol::Terminal(a) = body[dot] {
                             // If A -> _ . a _ in this set and GOTO(i, a) = j, then action[i, a] = shift j. a is a terminal
 
                             let j = gotos[&(i, Symbol::Terminal(a))];
-                            let old = actions.insert((i, Some(a)), ParseAction::Shift(j));
-                            // TODO: Handle conflict properly.
-                            if let Some(x) = old {
-                                panic!("Conflict with Shift({j}) onto {x:?} @ set {i}, {item:?}")
+                            let action = ParseAction::Shift(j);
+                            let old = actions.insert((i, Some(a)), action);
+
+                            // TODO: Move this stuff into ParseTableBuilder struct or something.
+                            if old.is_some() && (old != Some(action)) {
+                                // Just overwrote a different action, this is a conflict.
+                                return Err(ParseTableConflict::ShiftReduce);
                             }
                         }
                     }
@@ -647,6 +648,16 @@ pub enum ParseAction {
 
     /// The input should be accepted.
     Accept,
+}
+
+/// A conflict found during parse table generation which prevents the production of an SLR parser.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParseTableConflict {
+    /// A conflict between a shift action and reduce action.
+    ShiftReduce,
+
+    /// A conflict between two reduce action and reduce action.
+    ReduceReduce,
 }
 
 /// An error in a non-proper grammar.

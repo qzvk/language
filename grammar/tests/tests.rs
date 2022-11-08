@@ -1,5 +1,6 @@
 use grammar::{
-    Error, Grammar, Nonterminal, ParseAction, ParseTable, ProperGrammar, Symbol, Terminal,
+    Error, Grammar, Nonterminal, ParseAction, ParseTable, ParseTableConflict, ProperGrammar,
+    Symbol, Terminal,
 };
 
 #[test]
@@ -428,4 +429,42 @@ fn can_generate_parse_table_for_simple_grammar() {
             "state: {state}, nonterminal: {nonterminal:?}"
         );
     }
+}
+
+#[test]
+fn can_report_shift_reduce_conflict_in_table() {
+    // S -> a X b
+    // X -> c
+    // X -> c b
+    let (s, mut grammar) = Grammar::new();
+    let x = grammar.add_nonterminal("X");
+    let a = grammar.add_terminal("a");
+    let b = grammar.add_terminal("b");
+    let c = grammar.add_terminal("c");
+    grammar.add_rule(s).terminal(a).nonterminal(x).terminal(b);
+    grammar.add_rule(x).terminal(c);
+    grammar.add_rule(x).terminal(c).terminal(b);
+    let grammar = grammar.validate().unwrap();
+    let error = grammar.parse_table().unwrap_err();
+
+    assert_eq!(ParseTableConflict::ShiftReduce, error);
+}
+
+#[test]
+fn can_report_reduce_reduce_conflict_in_table() {
+    // S -> X
+    // S -> Y
+    // X -> a
+    // Y -> a
+    let (s, mut grammar) = Grammar::new();
+    let x = grammar.add_nonterminal("X");
+    let y = grammar.add_nonterminal("Y");
+    let a = grammar.add_terminal("a");
+    grammar.add_rule(s).nonterminal(x);
+    grammar.add_rule(s).nonterminal(y);
+    grammar.add_rule(x).terminal(a);
+    grammar.add_rule(y).terminal(a);
+    let grammar = grammar.validate().unwrap();
+    let error = grammar.parse_table().unwrap_err();
+    assert_eq!(ParseTableConflict::ReduceReduce, error);
 }
