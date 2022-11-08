@@ -774,8 +774,64 @@ impl ParseTable {
 
     /// The state to transition to given an input and state.
     pub fn goto(&self, state: usize, input: Nonterminal) -> usize {
+        if !self.gotos.contains_key(&(state, input)) {
+            panic!("Bad goto for state {} and input {}", state, input.0);
+        }
         self.gotos[&(state, input)]
     }
+
+    /// Parse a sequence of terminals into a parse tree.
+    pub fn parse(&self, mut input: impl Iterator<Item = Terminal>) -> ParseTree {
+        let dummy_tree = ParseTree::Terminal(Terminal(0));
+
+        let mut a = input.next();
+        let mut stack = vec![(dummy_tree, 0)];
+
+        loop {
+            let (_, head_state) = stack.last().cloned().unwrap();
+
+            match self.action(head_state, a) {
+                ParseAction::Shift(t) => {
+                    stack.push((ParseTree::Terminal(a.unwrap()), t));
+                    a = input.next();
+                }
+
+                ParseAction::Reduce(a, len) => {
+                    let mut items = Vec::with_capacity(len);
+                    for _ in 0..len {
+                        let (item, _) = stack.pop().unwrap();
+                        items.push(item);
+                    }
+                    items.reverse();
+
+                    let item = ParseTree::Nonterminal(a, items);
+
+                    let (_, t) = stack
+                        .last()
+                        .cloned()
+                        .unwrap_or((ParseTree::Terminal(Terminal(0)), 0));
+
+                    stack.push((item, self.goto(t, a)));
+                }
+
+                ParseAction::Error => todo!("Handling errors during parsing is not implemented."),
+
+                ParseAction::Accept => break,
+            }
+        }
+
+        stack.pop().unwrap().0
+    }
+}
+
+/// A tree of symbols generated during parsing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ParseTree {
+    /// A terminal node, corresponding to an input symbol.
+    Terminal(Terminal),
+
+    /// A nonterminal node, containing subtrees.
+    Nonterminal(Nonterminal, Vec<ParseTree>),
 }
 
 #[cfg(test)]

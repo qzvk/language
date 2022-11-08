@@ -1,6 +1,6 @@
 use grammar::{
-    Error, Grammar, Nonterminal, ParseAction, ParseTable, ParseTableConflict, ProperGrammar,
-    Symbol, Terminal,
+    Error, Grammar, Nonterminal, ParseAction, ParseTable, ParseTableConflict, ParseTree,
+    ProperGrammar, Symbol, Terminal,
 };
 
 #[test]
@@ -467,4 +467,108 @@ fn can_report_reduce_reduce_conflict_in_table() {
     let grammar = grammar.validate().unwrap();
     let error = grammar.parse_table().unwrap_err();
     assert_eq!(ParseTableConflict::ReduceReduce, error);
+}
+
+#[test]
+fn can_parse_simple_input() {
+    // S' -> E
+    // E -> E + T
+    // E -> T
+    // T -> T * F
+    // T -> F
+    // F -> x
+    // F -> ( E )
+    let (expr, mut grammar) = Grammar::new();
+    let term = grammar.add_nonterminal("T");
+    let factor = grammar.add_nonterminal("F");
+    let plus = grammar.add_terminal("+");
+    let asterisk = grammar.add_terminal("*");
+    let x = grammar.add_terminal("x");
+    let open = grammar.add_terminal("(");
+    let close = grammar.add_terminal(")");
+    grammar
+        .add_rule(expr)
+        .nonterminal(expr)
+        .terminal(plus)
+        .nonterminal(term);
+    grammar.add_rule(expr).nonterminal(term);
+    grammar
+        .add_rule(term)
+        .nonterminal(term)
+        .terminal(asterisk)
+        .nonterminal(factor);
+    grammar.add_rule(term).nonterminal(factor);
+    grammar.add_rule(factor).terminal(x);
+    grammar
+        .add_rule(factor)
+        .terminal(open)
+        .nonterminal(expr)
+        .terminal(close);
+    let grammar = grammar.validate().unwrap();
+    let table = grammar.parse_table().unwrap();
+
+    // (x + x) * (x + x) + x
+    let input = [
+        open, x, plus, x, close, asterisk, open, x, plus, x, close, plus, x,
+    ]
+    .into_iter();
+
+    use ParseTree::{Nonterminal as N, Terminal as T};
+    #[rustfmt::skip]
+    let expected: ParseTree = N(expr, vec![
+        N(expr, vec![
+            N(term, vec![
+                N(term, vec![
+                    N(factor, vec![
+                        T(open),
+                        N(expr, vec![
+                            N(expr, vec![
+                                N(term, vec![
+                                    N(factor, vec![
+                                        T(x),
+                                    ]),
+                                ])
+                            ]),
+                            T(plus),
+                            N(term, vec![
+                                N(factor, vec![
+                                    T(x),
+                                ]),
+                            ])
+                        ]),
+                        T(close),
+                    ]),
+                ]),
+                T(asterisk),
+                N(factor, vec![
+                    T(open),
+                    N(expr, vec![
+                        N(expr, vec![
+                            N(term, vec![
+                                N(factor, vec![
+                                    T(x),
+                                ]),
+                            ])
+                            ]),
+                        T(plus),
+                        N(term, vec![
+                            N(factor, vec![
+                                T(x),
+                            ]),
+                        ])
+                    ]),
+                    T(close),
+                ]),
+            ]),
+        ]),
+        T(plus),
+        N(term, vec![
+            N(factor, vec![
+                T(x),
+            ]),
+        ]),
+    ]);
+
+    let parse_tree: ParseTree = table.parse(input);
+    assert_eq!(expected, parse_tree);
 }

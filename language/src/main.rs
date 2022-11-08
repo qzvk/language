@@ -41,9 +41,7 @@ fn generate_parse_table() -> ParseTable {
         .nonterminal(apply_expr)
         .terminal(equals)
         .nonterminal(add_expr);
-    grammar
-        .add_rule(assignment)
-        .nonterminal(add_expr);
+    grammar.add_rule(assignment).nonterminal(add_expr);
 
     grammar
         .add_rule(add_expr)
@@ -189,9 +187,7 @@ fn generate_parse_table() -> ParseTable {
         println!("GOTO({from}, {name}) = {to}");
     }
 
-    let table = proper_grammar.parse_table().unwrap();
-
-    table
+    proper_grammar.parse_table().unwrap()
 }
 
 fn main() {
