@@ -1,4 +1,5 @@
-use lexer::{lex, Error, LexResult, TokenInfo, TokenKind};
+use language::{TokenInfo, TokenKind};
+use lexer::{lex, Error, LexResult};
 
 #[test]
 fn can_lex_empty_string() {

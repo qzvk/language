@@ -4,99 +4,12 @@
 //! The lexer for a programming language. Recognizes `+`, `-`, `*`, `/`, `;`, `=`, `(`, `)`,
 //! integers `/[0-9]+/` and identifiers `/[a-zA-Z_][a-zA-Z0-9_]*/`.
 
+use language::{TokenInfo, TokenKind};
 use std::{iter::Peekable, str::CharIndices};
 
 /// The type produced by the `lex` iterator. Contains either a token kind or a lex error,
 /// alongside position information.
 pub type LexResult<'a> = (Result<TokenKind, Error>, TokenInfo<'a>);
-
-/// Token (or lexical error) position information.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TokenInfo<'a> {
-    line: u32,
-    column: u32,
-    source: &'a str,
-}
-
-impl<'a> TokenInfo<'a> {
-    /// Create new token info, with the given `line`, `column`, and string of associated `source`.
-    pub const fn new(line: u32, column: u32, source: &'a str) -> Self {
-        Self {
-            line,
-            column,
-            source,
-        }
-    }
-
-    /// The line of a token.
-    pub fn line(&self) -> u32 {
-        self.line
-    }
-
-    /// The column the token begins on.
-    pub fn column(&self) -> u32 {
-        self.column
-    }
-}
-
-impl<'a> std::fmt::Display for TokenInfo<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Line and column numbers are 1-indexed, since they're for humans.
-        write!(f, "{}:{} {:?}", self.line + 1, self.column + 1, self.source)
-    }
-}
-
-/// A kind of token producable by lexical analysis.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum TokenKind {
-    /// A plus (`+`)
-    Plus,
-
-    /// A minus (`-`)
-    Minus,
-
-    /// An asterisk (`*`)
-    Asterisk,
-
-    /// A slash (`/`)
-    Slash,
-
-    /// A semicolon (`;`)
-    Semicolon,
-
-    /// An equals (`=`)
-    Equals,
-
-    /// An open parenthesis (`(`)
-    OpenParen,
-
-    /// A close parenthesis (`)`)
-    CloseParen,
-
-    /// An integer (`/[0-9+]/`)
-    Integer,
-
-    /// An identifier (`/[a-zA-Z_][a-zA-Z0-9_]*/`)
-    Ident,
-}
-
-impl std::fmt::Display for TokenKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let string = match self {
-            TokenKind::Plus => "plus",
-            TokenKind::Minus => "minus",
-            TokenKind::Asterisk => "asterisk",
-            TokenKind::Slash => "slash",
-            TokenKind::Semicolon => "semicolon",
-            TokenKind::Equals => "equals",
-            TokenKind::OpenParen => "open-paren",
-            TokenKind::CloseParen => "close-paren",
-            TokenKind::Integer => "integer",
-            TokenKind::Ident => "ident",
-        };
-        write!(f, "({string})")
-    }
-}
 
 /// Return an iterator over the tokens of `input`.
 pub fn lex(input: &str) -> impl Iterator<Item = LexResult> + '_ {

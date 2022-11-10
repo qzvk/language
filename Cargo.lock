@@ -7,13 +7,24 @@ name = "grammar"
 version = "0.1.0"
 
 [[package]]
+name = "interpreter"
+version = "0.1.0"
+dependencies = [
+ "grammar",
+ "language",
+ "lexer",
+]
+
+[[package]]
 name = "language"
 version = "0.1.0"
 dependencies = [
  "grammar",
- "lexer",
 ]
 
 [[package]]
 name = "lexer"
 version = "0.1.0"
+dependencies = [
+ "language",
+]
