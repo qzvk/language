@@ -4,3 +4,7 @@ members = [
     "language",
     "lexer",
 ]
+
+[profile.release]
+lto = true
+opt-level = 3
