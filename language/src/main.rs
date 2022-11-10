@@ -333,14 +333,28 @@ fn main() {
     stdin().read_to_string(&mut input).unwrap();
 
     let mut lex_errors = Vec::new();
-    let tokens = lexer::lex(&input).filter_map(|(result, _info)| match result {
+    let tokens = lexer::lex(&input).filter_map(|(result, info)| match result {
         Ok(token) => Some(Terminal(token)),
         Err(error) => {
-            lex_errors.push(error);
+            lex_errors.push((error, info));
             None
         }
     });
 
     let parse_tree = table.parse(tokens);
+
+    if !lex_errors.is_empty() {
+        for (error, info) in lex_errors {
+            println!(
+                "{}:{}: error: {}",
+                info.line() + 1,
+                info.column() + 1,
+                error
+            );
+        }
+
+        return;
+    }
+
     print_parse_tree(0, parse_tree);
 }

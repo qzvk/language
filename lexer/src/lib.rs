@@ -27,6 +27,16 @@ impl<'a> TokenInfo<'a> {
             source,
         }
     }
+
+    /// The line of a token.
+    pub fn line(&self) -> u32 {
+        self.line
+    }
+
+    /// The column the token begins on.
+    pub fn column(&self) -> u32 {
+        self.column
+    }
 }
 
 impl<'a> std::fmt::Display for TokenInfo<'a> {
