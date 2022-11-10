@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use grammar::{Grammar, Nonterminal as _, ParseTable, Symbol, Terminal as _, ParseTree};
+use grammar::{Grammar, Nonterminal as _, ParseTable, ParseTree, Symbol, Terminal as _};
 use lexer::TokenKind;
 use std::io::{stdin, Read};
 
@@ -131,7 +131,7 @@ impl grammar::Terminal for Terminal {
     }
 }
 
-fn generate_parse_table() -> ParseTable<Nonterminal, Terminal> {
+fn generate_parse_table(verbose: bool) -> ParseTable<Nonterminal, Terminal> {
     use Nonterminal::*;
     use Terminal as T;
     use TokenKind::*;
@@ -188,88 +188,98 @@ fn generate_parse_table() -> ParseTable<Nonterminal, Terminal> {
     grammar.add_rule(MulOp).terminal(T(Asterisk));
     grammar.add_rule(MulOp).terminal(T(Slash));
 
-    println!("################################################################################");
-    println!("#                                    Grammar                                   #");
-    println!("################################################################################");
-    print!("{}", grammar);
-
+    if verbose {
+        println!("######################################################################");
+        println!("#                               Grammar                              #");
+        println!("######################################################################");
+        print!("{}", grammar);
+    }
     let proper_grammar = grammar.validate().unwrap();
 
-    println!();
-    println!("################################################################################");
-    println!("#                                    Firsts                                    #");
-    println!("################################################################################");
+    if verbose {
+        println!();
+        println!("######################################################################");
+        println!("#                               Firsts                               #");
+        println!("######################################################################");
+        for symbol in Terminal::all()
+            .into_iter()
+            .map(Symbol::Terminal)
+            .chain(Nonterminal::all().map(Symbol::Nonterminal))
+        {
+            print!("FIRST({}) = {{ ", symbol.as_str());
 
-    for symbol in Terminal::all()
-        .into_iter()
-        .map(Symbol::Terminal)
-        .chain(Nonterminal::all().map(Symbol::Nonterminal))
-    {
-        print!("FIRST({}) = {{ ", symbol.as_str());
-
-        for t in proper_grammar.first(&[symbol]) {
-            print!("{}, ", t.as_str());
+            for t in proper_grammar.first(&[symbol]) {
+                print!("{}, ", t.as_str());
+            }
+            println!("}}");
         }
-        println!("}}");
-    }
 
-    println!();
-    println!("################################################################################");
-    println!("#                                    Follows                                   #");
-    println!("################################################################################");
+        println!();
+        println!("######################################################################");
+        println!("#                               Follows                              #");
+        println!("######################################################################");
 
-    for n in Nonterminal::all() {
-        print!("FOLLOW({}) = {{ ", n.as_str());
+        for n in Nonterminal::all() {
+            print!("FOLLOW({}) = {{ ", n.as_str());
 
-        for t in proper_grammar.follow(n) {
-            let name = match t {
-                Some(s) => s.as_str(),
-                None => "$",
-            };
-            print!("{name}, ");
+            for t in proper_grammar.follow(n) {
+                let name = match t {
+                    Some(s) => s.as_str(),
+                    None => "$",
+                };
+                print!("{name}, ");
+            }
+            println!("}}");
         }
-        println!("}}");
     }
 
     let (item_sets, gotos) = proper_grammar.item_sets();
 
-    println!();
-    println!("################################################################################");
-    println!("#                                   Item sets                                  #");
-    println!("################################################################################");
+    if verbose {
+        println!();
+        println!("######################################################################");
+        println!("#                              Item sets                             #");
+        println!("######################################################################");
 
-    for (i, set) in item_sets.into_iter().enumerate() {
-        println!("{i}:");
-        for item in set.into_iter() {
-            print!("    ");
-            match item {
-                grammar::Item::Start => println!("S' -> . start"),
+        for (i, set) in item_sets.into_iter().enumerate() {
+            println!("{i}:");
+            for item in set.into_iter() {
+                print!("    ");
+                match item {
+                    grammar::Item::Start => println!("S' -> . start"),
 
-                grammar::Item::End => println!("S' -> start ."),
+                    grammar::Item::End => println!("S' -> start ."),
 
-                grammar::Item::Rule((head, body), dot) => {
-                    print!("{} ->", head.as_str());
-                    for i in 0..dot {
-                        print!(" {}", body[i].as_str());
+                    grammar::Item::Rule((head, body), dot) => {
+                        print!("{} ->", head.as_str());
+                        for i in 0..dot {
+                            print!(" {}", body[i].as_str());
+                        }
+                        print!(" .");
+                        for i in dot..body.len() {
+                            print!(" {}", body[i].as_str());
+                        }
+                        println!();
                     }
-                    print!(" .");
-                    for i in dot..body.len() {
-                        print!(" {}", body[i].as_str());
-                    }
-                    println!();
                 }
             }
         }
-    }
 
-    println!();
-    println!("################################################################################");
-    println!("#                                     GOTOs                                    #");
-    println!("################################################################################");
+        println!();
+        println!(
+            "################################################################################"
+        );
+        println!(
+            "#                                     GOTOs                                    #"
+        );
+        println!(
+            "################################################################################"
+        );
 
-    for ((from, symbol), to) in gotos {
-        let name = symbol.as_str();
-        println!("GOTO({from}, {name}) = {to}");
+        for ((from, symbol), to) in gotos {
+            let name = symbol.as_str();
+            println!("GOTO({from}, {name}) = {to}");
+        }
     }
 
     proper_grammar.parse_table().unwrap()
@@ -301,7 +311,23 @@ fn print_parse_tree(indent: usize, tree: ParseTree<Nonterminal, Terminal>) {
 }
 
 fn main() {
-    let table = generate_parse_table();
+    let help = std::env::args().any(|arg| arg == "--help");
+    let verbose = std::env::args().any(|arg| arg == "--verbose");
+
+    if help {
+        println!("language 0.1.0");
+        println!("Small experimental pure-functional language interpreter.");
+        println!();
+        println!("USAGE");
+        println!("    language OPTIONS?");
+        println!();
+        println!("OPTIONS");
+        println!("    --help      Display this help text.");
+        println!("    --verbose   Print grammar information during parse table generation.");
+        return;
+    }
+
+    let table = generate_parse_table(verbose);
 
     let mut input = String::new();
     stdin().read_to_string(&mut input).unwrap();
