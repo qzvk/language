@@ -1,81 +1,192 @@
 #![forbid(unsafe_code)]
 
+use grammar::{Grammar, Nonterminal as _, ParseTable, Symbol, Terminal as _};
+use lexer::TokenKind;
 use std::io::{stdin, Read};
 
-use grammar::{Grammar, ParseTable, Symbol};
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Nonterminal {
+    Start,
+    AssignmentSeq,
+    Assignment,
+    AddExpr,
+    MulExpr,
+    ApplyExpr,
+    UnaryExpr,
+    AddOp,
+    MulOp,
+}
 
-fn generate_parse_table() -> ParseTable {
-    let (document, mut grammar) = Grammar::new();
+impl grammar::Nonterminal for Nonterminal {
+    type Iterator = std::array::IntoIter<Self, 9>;
 
-    let plus = grammar.add_terminal("'+'");
-    let minus = grammar.add_terminal("'-'");
-    let asterisk = grammar.add_terminal("'*'");
-    let slash = grammar.add_terminal("'/'");
-    let semicolon = grammar.add_terminal("';'");
-    let equals = grammar.add_terminal("'='");
-    let open_paren = grammar.add_terminal("'('");
-    let close_paren = grammar.add_terminal("')'");
-    let integer = grammar.add_terminal("integer");
-    let ident = grammar.add_terminal("ident");
+    const COUNT: usize = 9;
 
-    let assignment_seq = grammar.add_nonterminal("assignment-seq");
-    let assignment = grammar.add_nonterminal("assignment");
-    let add_expr = grammar.add_nonterminal("add-expr");
-    let mul_expr = grammar.add_nonterminal("mul-expr");
-    let apply_expr = grammar.add_nonterminal("apply-expr");
-    let unary_expr = grammar.add_nonterminal("unary-expr");
-    let add_op = grammar.add_nonterminal("add-op");
-    let mul_op = grammar.add_nonterminal("mul-op");
+    fn all() -> Self::Iterator {
+        [
+            Self::Start,
+            Self::AssignmentSeq,
+            Self::Assignment,
+            Self::AddExpr,
+            Self::MulExpr,
+            Self::ApplyExpr,
+            Self::UnaryExpr,
+            Self::AddOp,
+            Self::MulOp,
+        ]
+        .into_iter()
+    }
 
-    grammar.add_rule(document).nonterminal(assignment_seq);
+    fn index(self) -> usize {
+        self as usize
+    }
 
-    grammar.add_rule(assignment_seq).nonterminal(assignment);
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 => Self::Start,
+            1 => Self::AssignmentSeq,
+            2 => Self::Assignment,
+            3 => Self::AddExpr,
+            4 => Self::MulExpr,
+            5 => Self::ApplyExpr,
+            6 => Self::UnaryExpr,
+            7 => Self::AddOp,
+            8 => Self::MulOp,
+            _ => panic!(),
+        }
+    }
+
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::AssignmentSeq => "assignment-seq",
+            Self::Assignment => "assignment",
+            Self::AddExpr => "add-expr",
+            Self::MulExpr => "mul-expr",
+            Self::ApplyExpr => "apply-expr",
+            Self::UnaryExpr => "unary-expr",
+            Self::AddOp => "add-op",
+            Self::MulOp => "mul-op",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct Terminal(TokenKind);
+
+impl grammar::Terminal for Terminal {
+    type Iterator = std::array::IntoIter<Self, 10>;
+
+    const COUNT: usize = 10;
+
+    fn all() -> Self::Iterator {
+        [
+            Self(TokenKind::Plus),
+            Self(TokenKind::Minus),
+            Self(TokenKind::Asterisk),
+            Self(TokenKind::Slash),
+            Self(TokenKind::Semicolon),
+            Self(TokenKind::Equals),
+            Self(TokenKind::OpenParen),
+            Self(TokenKind::CloseParen),
+            Self(TokenKind::Integer),
+            Self(TokenKind::Ident),
+        ]
+        .into_iter()
+    }
+
+    fn index(self) -> usize {
+        self.0 as usize
+    }
+
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 => Self(TokenKind::Plus),
+            1 => Self(TokenKind::Minus),
+            2 => Self(TokenKind::Asterisk),
+            3 => Self(TokenKind::Slash),
+            4 => Self(TokenKind::Semicolon),
+            5 => Self(TokenKind::Equals),
+            6 => Self(TokenKind::OpenParen),
+            7 => Self(TokenKind::CloseParen),
+            8 => Self(TokenKind::Integer),
+            9 => Self(TokenKind::Ident),
+            _ => panic!(),
+        }
+    }
+
+    fn as_str(&self) -> &'static str {
+        match self.0 {
+            TokenKind::Plus => "'+'",
+            TokenKind::Minus => "'-'",
+            TokenKind::Asterisk => "'*'",
+            TokenKind::Slash => "'/'",
+            TokenKind::Semicolon => "';'",
+            TokenKind::Equals => "'='",
+            TokenKind::OpenParen => "'('",
+            TokenKind::CloseParen => "')'",
+            TokenKind::Integer => "integer",
+            TokenKind::Ident => "ident",
+        }
+    }
+}
+
+fn generate_parse_table() -> ParseTable<Nonterminal, Terminal> {
+    use Nonterminal::*;
+    use Terminal as T;
+    use TokenKind::*;
+
+    let mut grammar = Grammar::new(Start);
+
+    grammar.add_rule(Start).nonterminal(AssignmentSeq);
+
+    grammar.add_rule(AssignmentSeq).nonterminal(Assignment);
     grammar
-        .add_rule(assignment_seq)
-        .nonterminal(assignment)
-        .terminal(semicolon)
-        .nonterminal(assignment_seq);
+        .add_rule(AssignmentSeq)
+        .nonterminal(Assignment)
+        .terminal(T(Semicolon))
+        .nonterminal(AssignmentSeq);
 
     grammar
-        .add_rule(assignment)
-        .nonterminal(apply_expr)
-        .terminal(equals)
-        .nonterminal(add_expr);
-    grammar.add_rule(assignment).nonterminal(add_expr);
+        .add_rule(Assignment)
+        .nonterminal(ApplyExpr)
+        .terminal(T(Equals))
+        .nonterminal(AddExpr);
+    grammar.add_rule(Assignment).nonterminal(AddExpr);
 
     grammar
-        .add_rule(add_expr)
-        .nonterminal(add_expr)
-        .nonterminal(add_op)
-        .nonterminal(mul_expr);
-    grammar.add_rule(add_expr).nonterminal(mul_expr);
+        .add_rule(AddExpr)
+        .nonterminal(AddExpr)
+        .nonterminal(AddOp)
+        .nonterminal(MulExpr);
+    grammar.add_rule(AddExpr).nonterminal(MulExpr);
 
     grammar
-        .add_rule(mul_expr)
-        .nonterminal(mul_expr)
-        .nonterminal(mul_op)
-        .nonterminal(apply_expr);
-    grammar.add_rule(mul_expr).nonterminal(apply_expr);
+        .add_rule(MulExpr)
+        .nonterminal(MulExpr)
+        .nonterminal(MulOp)
+        .nonterminal(ApplyExpr);
+    grammar.add_rule(MulExpr).nonterminal(ApplyExpr);
 
     grammar
-        .add_rule(apply_expr)
-        .nonterminal(apply_expr)
-        .nonterminal(unary_expr);
-    grammar.add_rule(apply_expr).nonterminal(unary_expr);
+        .add_rule(ApplyExpr)
+        .nonterminal(ApplyExpr)
+        .nonterminal(UnaryExpr);
+    grammar.add_rule(ApplyExpr).nonterminal(UnaryExpr);
 
     grammar
-        .add_rule(unary_expr)
-        .terminal(open_paren)
-        .nonterminal(add_expr)
-        .terminal(close_paren);
-    grammar.add_rule(unary_expr).terminal(integer);
-    grammar.add_rule(unary_expr).terminal(ident);
+        .add_rule(UnaryExpr)
+        .terminal(T(OpenParen))
+        .nonterminal(AddExpr)
+        .terminal(T(CloseParen));
+    grammar.add_rule(UnaryExpr).terminal(T(Integer));
+    grammar.add_rule(UnaryExpr).terminal(T(Ident));
 
-    grammar.add_rule(add_op).terminal(plus);
-    grammar.add_rule(add_op).terminal(minus);
+    grammar.add_rule(AddOp).terminal(T(Plus));
+    grammar.add_rule(AddOp).terminal(T(Minus));
 
-    grammar.add_rule(mul_op).terminal(asterisk);
-    grammar.add_rule(mul_op).terminal(slash);
+    grammar.add_rule(MulOp).terminal(T(Asterisk));
+    grammar.add_rule(MulOp).terminal(T(Slash));
 
     println!("################################################################################");
     println!("#                                    Grammar                                   #");
@@ -83,46 +194,21 @@ fn generate_parse_table() -> ParseTable {
     print!("{}", grammar);
 
     let proper_grammar = grammar.validate().unwrap();
-    let terminals = [
-        plus,
-        minus,
-        asterisk,
-        slash,
-        semicolon,
-        equals,
-        open_paren,
-        close_paren,
-        integer,
-        ident,
-    ];
-    let nonterminals = [
-        document,
-        assignment_seq,
-        assignment,
-        add_expr,
-        mul_expr,
-        apply_expr,
-        unary_expr,
-        add_op,
-        mul_op,
-    ];
 
     println!();
     println!("################################################################################");
     println!("#                                    Firsts                                    #");
     println!("################################################################################");
 
-    for n in terminals
+    for symbol in Terminal::all()
         .into_iter()
         .map(Symbol::Terminal)
-        .chain(nonterminals.iter().cloned().map(Symbol::Nonterminal))
+        .chain(Nonterminal::all().map(Symbol::Nonterminal))
     {
-        let name = proper_grammar.symbol_name(n);
-        print!("FIRST({name}) = {{ ");
+        print!("FIRST({}) = {{ ", symbol.as_str());
 
-        for t in proper_grammar.first(&[n]) {
-            let name = proper_grammar.terminal_name(t);
-            print!("{name}, ");
+        for t in proper_grammar.first(&[symbol]) {
+            print!("{}, ", t.as_str());
         }
         println!("}}");
     }
@@ -132,13 +218,12 @@ fn generate_parse_table() -> ParseTable {
     println!("#                                    Follows                                   #");
     println!("################################################################################");
 
-    for n in nonterminals {
-        let name = proper_grammar.nonterminal_name(n);
-        print!("FOLLOW({name}) = {{ ");
+    for n in Nonterminal::all() {
+        print!("FOLLOW({}) = {{ ", n.as_str());
 
         for t in proper_grammar.follow(n) {
             let name = match t {
-                Some(s) => proper_grammar.terminal_name(s),
+                Some(s) => s.as_str(),
                 None => "$",
             };
             print!("{name}, ");
@@ -163,13 +248,13 @@ fn generate_parse_table() -> ParseTable {
                 grammar::Item::End => println!("S' -> start ."),
 
                 grammar::Item::Rule((head, body), dot) => {
-                    print!("{} ->", proper_grammar.nonterminal_name(*head));
+                    print!("{} ->", head.as_str());
                     for i in 0..dot {
-                        print!(" {}", proper_grammar.symbol_name(body[i]));
+                        print!(" {}", body[i].as_str());
                     }
                     print!(" .");
                     for i in dot..body.len() {
-                        print!(" {}", proper_grammar.symbol_name(body[i]));
+                        print!(" {}", body[i].as_str());
                     }
                     println!();
                 }
@@ -183,7 +268,7 @@ fn generate_parse_table() -> ParseTable {
     println!("################################################################################");
 
     for ((from, symbol), to) in gotos {
-        let name = proper_grammar.symbol_name(symbol);
+        let name = symbol.as_str();
         println!("GOTO({from}, {name}) = {to}");
     }
 

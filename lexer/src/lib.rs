@@ -37,7 +37,7 @@ impl<'a> std::fmt::Display for TokenInfo<'a> {
 }
 
 /// A kind of token producable by lexical analysis.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TokenKind {
     /// A plus (`+`)
     Plus,

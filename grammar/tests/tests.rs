@@ -1,225 +1,254 @@
 use grammar::{
-    Error, Grammar, Nonterminal, ParseAction, ParseTable, ParseTableConflict, ParseTree,
-    ProperGrammar, Symbol, Terminal,
+    Error, Grammar, Nonterminal, ParseAction, ParseTable, ParseTableConflict, ParseTree, Symbol,
+    Terminal,
 };
+
+/// The number of elements in a comma-separated ident list.
+macro_rules! count_list {
+    ($first:ident, $($rest:ident),+) => {
+        1 + count_list!($($rest),+)
+    };
+    ($single:ident) => {1};
+    () => {0};
+}
+
+/// Auto-implementation of Nonterminal trait.
+macro_rules! impl_nonterminal {
+    ($name:ident : [ $($variant:ident),+ ] ) => {
+        impl crate::Nonterminal for $name {
+            type Iterator = std::array::IntoIter<Self, {Self::COUNT}>;
+
+            const COUNT: usize = count_list!($($variant),+);
+
+            fn all() -> Self::Iterator {
+                [$(Self::$variant),+].into_iter()
+            }
+
+            fn index(self) -> usize {
+                self as usize
+            }
+
+            fn from_index(index: usize) -> Self {
+                Self::all().nth(index).unwrap()
+            }
+
+            fn as_str(&self) -> &'static str {
+                match self {
+                    $(
+                        Self::$variant => stringify!($variant),
+                    )+
+                }
+            }
+        }
+
+    };
+}
+
+/// Auto-implementation of Terminal trait.
+macro_rules! impl_terminal {
+    ($name:ident : [ $($variant:ident),+ ] ) => {
+        impl crate::Terminal for $name {
+            type Iterator = std::array::IntoIter<Self, {Self::COUNT}>;
+
+            const COUNT: usize = count_list!($($variant),+);
+
+            fn all() -> Self::Iterator {
+                [$(Self::$variant),+].into_iter()
+            }
+
+            fn index(self) -> usize {
+                self as usize
+            }
+
+            fn from_index(index: usize) -> Self {
+                Self::all().nth(index).unwrap()
+            }
+
+            fn as_str(&self) -> &'static str {
+                match self {
+                    $(
+                        Self::$variant => stringify!($variant),
+                    )+
+                }
+            }
+        }
+
+    };
+}
+
+/// Auto-define a nonterminal enum.
+macro_rules! define_nonterminal {
+    ($name:ident: [$($variant:ident),*] $(,)?) => {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        enum $name { $($variant),* }
+        impl_nonterminal! { $name: [$($variant),*] }
+    };
+}
+
+/// Auto-define a terminal enum.
+macro_rules! define_terminal {
+    ($name:ident: [$($variant:ident),*] $(,)?) => {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        enum $name { $($variant),* }
+        impl_terminal! { $name: [$($variant),*] }
+    };
+}
 
 #[test]
 fn can_create_grammar() {
-    let (start, mut grammar): (Nonterminal, Grammar) = Grammar::new();
+    define_nonterminal! { SimpleNonterminal: [S, A, B] };
+    define_terminal! { SimpleTerminal: [C, D] };
 
-    let a: Nonterminal = grammar.add_nonterminal("A");
-    assert_ne!(start, a);
+    use {SimpleNonterminal::*, SimpleTerminal::*};
 
-    let b: Nonterminal = grammar.add_nonterminal("B");
-    assert_ne!(start, b);
-    assert_ne!(a, b);
-
-    let c: Terminal = grammar.add_terminal("c");
-    let d: Terminal = grammar.add_terminal("d");
-    assert_ne!(c, d);
+    let mut grammar = Grammar::new(S);
 
     assert_eq!(0, grammar.rule_count());
 
-    grammar.add_rule(a).terminal(c);
+    grammar.add_rule(A).terminal(C);
     assert_eq!(1, grammar.rule_count());
 
-    grammar.add_rule(b).terminal(d);
+    grammar.add_rule(B).terminal(D);
     assert_eq!(2, grammar.rule_count());
 
-    grammar.add_rule(a).terminal(d).nonterminal(b).terminal(c);
+    grammar.add_rule(A).terminal(D).nonterminal(B).terminal(C);
     assert_eq!(3, grammar.rule_count());
 
-    grammar.add_rule(start).nonterminal(a);
+    grammar.add_rule(S).nonterminal(A);
     assert_eq!(4, grammar.rule_count());
 
-    let _proper_grammar: ProperGrammar = grammar.validate().unwrap();
+    let _proper_grammar = grammar.validate().unwrap();
 }
 
 #[test]
 fn unproductive_grammar_is_not_proper() {
-    let (start, mut grammar): (Nonterminal, Grammar) = Grammar::new();
-    // S -> X
-    // X -> a
-    // X -> Y
+    define_nonterminal!(N: [S, X, Y]);
+    define_terminal!(T: [A]);
+    let mut grammar = Grammar::new(N::S);
+    grammar.add_rule(N::S).nonterminal(N::X);
+    grammar.add_rule(N::X).terminal(T::A);
+    grammar.add_rule(N::X).nonterminal(N::Y);
 
-    let x = grammar.add_nonterminal("X");
-    let y = grammar.add_nonterminal("Y");
-    let a = grammar.add_terminal("a");
-
-    grammar.add_rule(start).nonterminal(x);
-    grammar.add_rule(x).terminal(a);
-    grammar.add_rule(x).nonterminal(y);
-
-    let error: Error = grammar.validate().unwrap_err();
-    assert_eq!(Error::UnproductiveNonterminals(vec![y]), error);
+    let error = grammar.validate().unwrap_err();
+    assert_eq!(Error::UnproductiveNonterminals(vec![N::Y]), error);
 }
 
 #[test]
 fn unreachable_grammar_is_not_proper() {
-    let (start, mut grammar): (Nonterminal, Grammar) = Grammar::new();
-    // S -> X
-    // X -> a
-    // Y -> b
+    define_nonterminal!(N: [S, X, Y]);
+    define_terminal!(T: [A, B, C]);
     // unreachable: b, Y, c
 
-    let x = grammar.add_nonterminal("X");
-    let y = grammar.add_nonterminal("Y");
-    let a = grammar.add_terminal("a");
-    let b = grammar.add_terminal("b");
-    let c = grammar.add_terminal("c");
+    let mut grammar = Grammar::new(N::S);
+    grammar.add_rule(N::S).nonterminal(N::X);
+    grammar.add_rule(N::X).terminal(T::A);
+    grammar.add_rule(N::Y).terminal(T::B);
 
-    grammar.add_rule(start).nonterminal(x);
-    grammar.add_rule(x).terminal(a);
-    grammar.add_rule(y).terminal(b);
-
-    let error: Error = grammar.validate().unwrap_err();
-    assert_eq!(Error::UnreachableSymbols(vec![y], vec![b, c]), error);
+    let error = grammar.validate().unwrap_err();
+    assert_eq!(
+        Error::UnreachableSymbols(vec![N::Y], vec![T::B, T::C]),
+        error
+    );
 }
 
 #[test]
 fn epsilon_productions_are_not_proper() {
-    let (start, mut grammar): (Nonterminal, Grammar) = Grammar::new();
-    // S -> X
-    // S -> Y
-    // S -> Z
-    // X ->
-    // X -> a X
-    // Y -> b Z c
-    // Z ->
+    define_nonterminal!(N: [S, X, Y, Z]);
+    define_terminal!(T: [A, B, C]);
 
-    let x = grammar.add_nonterminal("X");
-    let y = grammar.add_nonterminal("Y");
-    let z = grammar.add_nonterminal("Z");
-    let a = grammar.add_terminal("a");
-    let b = grammar.add_terminal("b");
-    let c = grammar.add_terminal("c");
+    let mut grammar = Grammar::new(N::S);
+    grammar.add_rule(N::S).nonterminal(N::X);
+    grammar.add_rule(N::S).nonterminal(N::Y);
+    grammar.add_rule(N::S).nonterminal(N::Z);
+    grammar.add_rule(N::Z);
+    grammar.add_rule(N::X);
+    grammar.add_rule(N::X).terminal(T::A).nonterminal(N::X);
+    grammar
+        .add_rule(N::Y)
+        .terminal(T::B)
+        .nonterminal(N::Z)
+        .terminal(T::C);
 
-    grammar.add_rule(start).nonterminal(x);
-    grammar.add_rule(start).nonterminal(y);
-    grammar.add_rule(start).nonterminal(z);
-    grammar.add_rule(z);
-    grammar.add_rule(x);
-    grammar.add_rule(x).terminal(a).nonterminal(x);
-    grammar.add_rule(y).terminal(b).nonterminal(z).terminal(c);
-
-    let error: Error = grammar.validate().unwrap_err();
-    assert_eq!(Error::EpsilonProductions(vec![x, z]), error);
+    let error = grammar.validate().unwrap_err();
+    assert_eq!(Error::EpsilonProductions(vec![N::X, N::Z]), error);
 }
 
 #[test]
 fn cycles_are_not_proper() {
-    let (start, mut grammar): (Nonterminal, Grammar) = Grammar::new();
-    // S -> X
-    // S -> Y
-    // S -> U
-    // X -> a
-    // X -> X a
-    // X -> b W
-    // Y -> Z
-    // Z -> Y a
-    // Z -> W
-    // W -> Y
-    // W -> c
-    // U -> V
-    // V -> U
-    // U -> b
+    define_nonterminal!(N: [S, U, V, W, X, Y, Z]);
+    define_terminal!(T: [A, B, C]);
 
-    let x = grammar.add_nonterminal("X");
-    let y = grammar.add_nonterminal("Y");
-    let z = grammar.add_nonterminal("Z");
-    let w = grammar.add_nonterminal("W");
-    let u = grammar.add_nonterminal("U");
-    let v = grammar.add_nonterminal("V");
-    let a = grammar.add_terminal("a");
-    let b = grammar.add_terminal("b");
-    let c = grammar.add_terminal("c");
+    let mut grammar = Grammar::new(N::S);
 
-    grammar.add_rule(start).nonterminal(x);
-    grammar.add_rule(start).nonterminal(y);
-    grammar.add_rule(start).nonterminal(u);
-    grammar.add_rule(x).terminal(a);
-    grammar.add_rule(x).nonterminal(x).terminal(a);
-    grammar.add_rule(x).terminal(b).nonterminal(w);
-    grammar.add_rule(y).nonterminal(z);
-    grammar.add_rule(z).nonterminal(y).terminal(a);
-    grammar.add_rule(z).nonterminal(w);
-    grammar.add_rule(w).nonterminal(y);
-    grammar.add_rule(w).terminal(c);
-    grammar.add_rule(u).nonterminal(v);
-    grammar.add_rule(u).terminal(b);
-    grammar.add_rule(v).nonterminal(u);
+    grammar.add_rule(N::S).nonterminal(N::X);
+    grammar.add_rule(N::S).nonterminal(N::Y);
+    grammar.add_rule(N::S).nonterminal(N::U);
+    grammar.add_rule(N::X).terminal(T::A);
+    grammar.add_rule(N::X).nonterminal(N::X).terminal(T::A);
+    grammar.add_rule(N::X).terminal(T::B).nonterminal(N::W);
+    grammar.add_rule(N::Y).nonterminal(N::Z);
+    grammar.add_rule(N::Z).nonterminal(N::Y).terminal(T::A);
+    grammar.add_rule(N::Z).nonterminal(N::W);
+    grammar.add_rule(N::W).nonterminal(N::Y);
+    grammar.add_rule(N::W).terminal(T::C);
+    grammar.add_rule(N::U).nonterminal(N::V);
+    grammar.add_rule(N::U).terminal(T::B);
+    grammar.add_rule(N::V).nonterminal(N::U);
 
-    let error: Error = grammar.validate().unwrap_err();
+    let error = grammar.validate().unwrap_err();
     assert_eq!(
-        Error::ContainsCycles(vec![vec![y, z, w], vec![u, v]]),
+        Error::ContainsCycles(vec![vec![N::U, N::V], vec![N::Y, N::Z, N::W]]),
         error
     );
 }
 
 #[test]
 fn can_display_grammar() {
-    let (start, mut grammar): (Nonterminal, Grammar) = Grammar::new();
+    define_nonterminal!(N: [S, X, Y]);
+    define_terminal!(T: [C, D]);
+    let mut grammar = Grammar::new(N::S);
+    grammar.add_rule(N::S).nonterminal(N::X);
+    grammar.add_rule(N::X).terminal(T::C);
+    grammar.add_rule(N::Y).terminal(T::D);
+    grammar
+        .add_rule(N::X)
+        .terminal(T::D)
+        .nonterminal(N::Y)
+        .terminal(T::C);
 
-    let x = grammar.add_nonterminal("X");
-    let y = grammar.add_nonterminal("Y");
-    let c = grammar.add_terminal("c");
-    let d = grammar.add_terminal("d");
-
-    grammar.add_rule(start).nonterminal(x);
-    grammar.add_rule(x).terminal(c);
-    grammar.add_rule(y).terminal(d);
-    grammar.add_rule(x).terminal(d).nonterminal(y).terminal(c);
-
-    const EXPECTED: &str = "start -> X\nX -> c\nY -> d\nX -> d Y c\n";
+    const EXPECTED: &str = "S -> X\nX -> C\nY -> D\nX -> D Y C\n";
     let actual = grammar.to_string();
     assert_eq!(EXPECTED, actual);
 }
 
 #[test]
 fn can_compute_first_sets_of_terminal_only_grammar() {
-    let (start, mut grammar) = Grammar::new();
-    let a = grammar.add_terminal("a");
-    let b = grammar.add_terminal("b");
-    let c = grammar.add_terminal("c");
-    grammar.add_rule(start).terminal(a);
-    grammar.add_rule(start).terminal(b);
-    grammar.add_rule(start).terminal(c);
+    define_nonterminal!(N: [S]);
+    define_terminal!(T: [A, B, C]);
+    let mut grammar = Grammar::new(N::S);
+    grammar.add_rule(N::S).terminal(T::A);
+    grammar.add_rule(N::S).terminal(T::B);
+    grammar.add_rule(N::S).terminal(T::C);
 
     let grammar = grammar.validate().unwrap();
-    let first_start = grammar.first(&[Symbol::Nonterminal(start)]);
-    assert_eq!(vec![a, b, c], first_start);
+    let first_start = grammar.first(&[Symbol::Nonterminal(N::S)]);
+    assert_eq!(vec![T::A, T::B, T::C], first_start);
 }
 
 #[test]
 fn can_compute_first_sets_of_example_grammar() {
-    let (start, mut grammar) = Grammar::new();
-    // S -> X
-    // S -> Y
-    // X -> a X
-    // X -> b X
-    // X -> d
-    // Y -> Y Z
-    // Y -> Z e
-    // Z -> c Z
-    // Z -> d
-
-    let x = grammar.add_nonterminal("x");
-    let y = grammar.add_nonterminal("y");
-    let z = grammar.add_nonterminal("z");
-    let a = grammar.add_terminal("a");
-    let b = grammar.add_terminal("b");
-    let c = grammar.add_terminal("c");
-    let d = grammar.add_terminal("d");
-    let e = grammar.add_terminal("d");
-    grammar.add_rule(start).nonterminal(x);
-    grammar.add_rule(start).nonterminal(y);
-    grammar.add_rule(x).terminal(a).nonterminal(x);
-    grammar.add_rule(x).terminal(b).nonterminal(x);
-    grammar.add_rule(x).terminal(d);
-    grammar.add_rule(y).nonterminal(y).nonterminal(z);
-    grammar.add_rule(y).nonterminal(z).terminal(e);
-    grammar.add_rule(z).terminal(c).nonterminal(z);
-    grammar.add_rule(z).terminal(d);
+    define_nonterminal!(N: [S, X, Y, Z]);
+    define_terminal!(T: [A, B, C, D, E]);
+    let mut grammar = Grammar::new(N::S);
+    grammar.add_rule(N::S).nonterminal(N::X);
+    grammar.add_rule(N::S).nonterminal(N::Y);
+    grammar.add_rule(N::X).terminal(T::A).nonterminal(N::X);
+    grammar.add_rule(N::X).terminal(T::B).nonterminal(N::X);
+    grammar.add_rule(N::X).terminal(T::D);
+    grammar.add_rule(N::Y).nonterminal(N::Y).nonterminal(N::Z);
+    grammar.add_rule(N::Y).nonterminal(N::Z).terminal(T::E);
+    grammar.add_rule(N::Z).terminal(T::C).nonterminal(N::Z);
+    grammar.add_rule(N::Z).terminal(T::D);
 
     // I've left out tests for FIRST of more than 1 symbols. Since this operation is over a
     // proper grammar, where nullable symbols are not allowed, the FIRST algorithm never needs
@@ -227,108 +256,55 @@ fn can_compute_first_sets_of_example_grammar() {
 
     let grammar = grammar.validate().unwrap();
     let first_empty = grammar.first(&[]);
-    let first_start = grammar.first(&[Symbol::Nonterminal(start)]);
-    let first_a = grammar.first(&[Symbol::Terminal(a)]);
-    let first_b = grammar.first(&[Symbol::Terminal(b)]);
-    let first_c = grammar.first(&[Symbol::Terminal(c)]);
-    let first_d = grammar.first(&[Symbol::Terminal(d)]);
-    let first_e = grammar.first(&[Symbol::Terminal(e)]);
-    let first_x = grammar.first(&[Symbol::Nonterminal(x)]);
-    let first_y = grammar.first(&[Symbol::Nonterminal(y)]);
-    let first_z = grammar.first(&[Symbol::Nonterminal(z)]);
+    let first_start = grammar.first(&[Symbol::Nonterminal(N::S)]);
+    let first_a = grammar.first(&[Symbol::Terminal(T::A)]);
+    let first_b = grammar.first(&[Symbol::Terminal(T::B)]);
+    let first_c = grammar.first(&[Symbol::Terminal(T::C)]);
+    let first_d = grammar.first(&[Symbol::Terminal(T::D)]);
+    let first_e = grammar.first(&[Symbol::Terminal(T::E)]);
+    let first_x = grammar.first(&[Symbol::Nonterminal(N::X)]);
+    let first_y = grammar.first(&[Symbol::Nonterminal(N::Y)]);
+    let first_z = grammar.first(&[Symbol::Nonterminal(N::Z)]);
 
     assert!(first_empty.is_empty());
-    assert_eq!(vec![a, b, c, d], first_start);
-    assert_eq!(vec![a], first_a);
-    assert_eq!(vec![b], first_b);
-    assert_eq!(vec![c], first_c);
-    assert_eq!(vec![d], first_d);
-    assert_eq!(vec![e], first_e);
-    assert_eq!(vec![a, b, d], first_x);
-    assert_eq!(vec![c, d], first_y);
-    assert_eq!(vec![c, d], first_z);
+    assert_eq!(vec![T::A, T::B, T::C, T::D], first_start);
+    assert_eq!(vec![T::A], first_a);
+    assert_eq!(vec![T::B], first_b);
+    assert_eq!(vec![T::C], first_c);
+    assert_eq!(vec![T::D], first_d);
+    assert_eq!(vec![T::E], first_e);
+    assert_eq!(vec![T::A, T::B, T::D], first_x);
+    assert_eq!(vec![T::C, T::D], first_y);
+    assert_eq!(vec![T::C, T::D], first_z);
 }
 
 #[test]
 fn can_compute_follow_set_of_example_grammar() {
-    let (start, mut grammar) = Grammar::new();
-    // S -> X Y
-    // S -> X Z
-    // X -> d X
-    // X -> d
-    // Y -> Y a
-    // Y -> b
-    // Z -> Z c
-    // Z -> d
+    define_nonterminal!(N: [S, X, Y, Z]);
+    define_terminal!(T: [A, B, C, D]);
+    let mut grammar = Grammar::new(N::S);
 
-    let x = grammar.add_nonterminal("X");
-    let y = grammar.add_nonterminal("Y");
-    let z = grammar.add_nonterminal("Z");
-    let a = grammar.add_terminal("a");
-    let b = grammar.add_terminal("b");
-    let c = grammar.add_terminal("c");
-    let d = grammar.add_terminal("d");
-
-    grammar.add_rule(start).nonterminal(x).nonterminal(y);
-    grammar.add_rule(start).nonterminal(x).nonterminal(z);
-    grammar.add_rule(x).terminal(d).nonterminal(x);
-    grammar.add_rule(x).terminal(d);
-    grammar.add_rule(y).nonterminal(y).terminal(a);
-    grammar.add_rule(y).terminal(b);
-    grammar.add_rule(z).nonterminal(z).terminal(c);
-    grammar.add_rule(z).terminal(d);
+    grammar.add_rule(N::S).nonterminal(N::X).nonterminal(N::Y);
+    grammar.add_rule(N::S).nonterminal(N::X).nonterminal(N::Z);
+    grammar.add_rule(N::X).terminal(T::D).nonterminal(N::X);
+    grammar.add_rule(N::X).terminal(T::D);
+    grammar.add_rule(N::Y).nonterminal(N::Y).terminal(T::A);
+    grammar.add_rule(N::Y).terminal(T::B);
+    grammar.add_rule(N::Z).nonterminal(N::Z).terminal(T::C);
+    grammar.add_rule(N::Z).terminal(T::D);
 
     let grammar = grammar.validate().unwrap();
 
-    assert_eq!(vec![None], grammar.follow(start));
-    assert_eq!(vec![Some(b), Some(d)], grammar.follow(x));
-    assert_eq!(vec![None, Some(a)], grammar.follow(y));
-    assert_eq!(vec![None, Some(c)], grammar.follow(z));
+    assert_eq!(vec![None], grammar.follow(N::S));
+    assert_eq!(vec![Some(T::B), Some(T::D)], grammar.follow(N::X));
+    assert_eq!(vec![None, Some(T::A)], grammar.follow(N::Y));
+    assert_eq!(vec![None, Some(T::C)], grammar.follow(N::Z));
 }
 
-#[test]
-fn can_get_symbol_names() {
-    let (start, mut grammar) = Grammar::new();
-    let t = grammar.add_terminal("terminal");
-    let s = grammar.add_nonterminal("Example");
-    let u = grammar.add_terminal("Terminal2");
-    grammar.add_rule(start).nonterminal(s);
-    grammar.add_rule(s).terminal(t).terminal(u);
-    let proper_grammar = grammar.validate().unwrap();
+define_nonterminal!(ExampleNonterminal: [Expr, Term, Factor]);
+define_terminal!(ExampleTerminal: [Plus, Asterisk, X, Open, Close]);
 
-    assert_eq!("start", proper_grammar.nonterminal_name(start));
-    assert_eq!("terminal", proper_grammar.terminal_name(t));
-    assert_eq!("Example", proper_grammar.nonterminal_name(s));
-    assert_eq!("Terminal2", proper_grammar.terminal_name(u));
-    assert_eq!(
-        "Example",
-        proper_grammar.symbol_name(Symbol::Nonterminal(s))
-    );
-    assert_eq!("Terminal2", proper_grammar.symbol_name(Symbol::Terminal(u)));
-}
-
-#[test]
-fn can_generate_parse_table_for_minimal_grammar() {
-    // S -> a
-    let (s, mut grammar) = Grammar::new();
-    let a = grammar.add_terminal("a");
-    grammar.add_rule(s).terminal(a);
-    let grammar = grammar.validate().unwrap();
-
-    let table: ParseTable = grammar.parse_table().unwrap();
-
-    assert_eq!(ParseAction::Shift(2), table.action(0, Some(a)));
-    assert_eq!(ParseAction::Error, table.action(0, None));
-    assert_eq!(ParseAction::Error, table.action(1, Some(a)));
-    assert_eq!(ParseAction::Accept, table.action(1, None));
-    assert_eq!(ParseAction::Error, table.action(2, Some(a)));
-    assert_eq!(ParseAction::Reduce(s, 1), table.action(2, None));
-
-    assert_eq!(1, table.goto(0, s));
-}
-
-#[test]
-fn can_generate_parse_table_for_simple_grammar() {
+fn simple_example_grammar() -> ParseTable<ExampleNonterminal, ExampleTerminal> {
     // S' -> E
     // E -> E + T
     // E -> T
@@ -336,73 +312,73 @@ fn can_generate_parse_table_for_simple_grammar() {
     // T -> F
     // F -> x
     // F -> ( E )
-    let (expr, mut grammar) = Grammar::new();
-    let term = grammar.add_nonterminal("T");
-    let factor = grammar.add_nonterminal("F");
-    let plus = grammar.add_terminal("+");
-    let asterisk = grammar.add_terminal("*");
-    let x = grammar.add_terminal("x");
-    let open = grammar.add_terminal("(");
-    let close = grammar.add_terminal(")");
+    use {ExampleNonterminal::*, ExampleTerminal::*};
+    let mut grammar = Grammar::new(Expr);
     grammar
-        .add_rule(expr)
-        .nonterminal(expr)
-        .terminal(plus)
-        .nonterminal(term);
-    grammar.add_rule(expr).nonterminal(term);
+        .add_rule(Expr)
+        .nonterminal(Expr)
+        .terminal(Plus)
+        .nonterminal(Term);
+    grammar.add_rule(Expr).nonterminal(Term);
     grammar
-        .add_rule(term)
-        .nonterminal(term)
-        .terminal(asterisk)
-        .nonterminal(factor);
-    grammar.add_rule(term).nonterminal(factor);
-    grammar.add_rule(factor).terminal(x);
+        .add_rule(Term)
+        .nonterminal(Term)
+        .terminal(Asterisk)
+        .nonterminal(Factor);
+    grammar.add_rule(Term).nonterminal(Factor);
+    grammar.add_rule(Factor).terminal(X);
     grammar
-        .add_rule(factor)
-        .terminal(open)
-        .nonterminal(expr)
-        .terminal(close);
+        .add_rule(Factor)
+        .terminal(Open)
+        .nonterminal(Expr)
+        .terminal(Close);
     let grammar = grammar.validate().unwrap();
-    let table = grammar.parse_table().unwrap();
+    grammar.parse_table().unwrap()
+}
+
+#[test]
+fn can_generate_parse_table_for_simple_grammar() {
+    use {ExampleNonterminal::*, ExampleTerminal::*};
+    let table = simple_example_grammar();
 
     use ParseAction::*;
-    let actions: &[(usize, Option<Terminal>, ParseAction)] = &[
-        (0, Some(x), Shift(4)),
-        (0, Some(open), Shift(5)),
-        (1, Some(plus), Shift(6)),
+    let actions = &[
+        (0, Some(X), Shift(4)),
+        (0, Some(Open), Shift(5)),
+        (1, Some(Plus), Shift(6)),
         (1, None, Accept),
-        (2, Some(plus), Reduce(expr, 1)),
-        (2, Some(asterisk), Shift(7)),
-        (2, Some(close), Reduce(expr, 1)),
-        (2, None, Reduce(expr, 1)),
-        (3, Some(plus), Reduce(term, 1)),
-        (3, Some(asterisk), Reduce(term, 1)),
-        (3, Some(close), Reduce(term, 1)),
-        (3, None, Reduce(term, 1)),
-        (4, Some(plus), Reduce(factor, 1)),
-        (4, Some(asterisk), Reduce(factor, 1)),
-        (4, Some(close), Reduce(factor, 1)),
-        (4, None, Reduce(factor, 1)),
-        (5, Some(x), Shift(4)),
-        (5, Some(open), Shift(5)),
-        (6, Some(x), Shift(4)),
-        (6, Some(open), Shift(5)),
-        (7, Some(x), Shift(4)),
-        (7, Some(open), Shift(5)),
-        (8, Some(plus), Shift(6)),
-        (8, Some(close), Shift(11)),
-        (9, Some(plus), Reduce(expr, 3)),
-        (9, Some(asterisk), Shift(7)),
-        (9, Some(close), Reduce(expr, 3)),
-        (9, None, Reduce(expr, 3)),
-        (10, Some(plus), Reduce(term, 3)),
-        (10, Some(asterisk), Reduce(term, 3)),
-        (10, Some(close), Reduce(term, 3)),
-        (10, None, Reduce(term, 3)),
-        (11, Some(plus), Reduce(factor, 3)),
-        (11, Some(asterisk), Reduce(factor, 3)),
-        (11, Some(close), Reduce(factor, 3)),
-        (11, None, Reduce(factor, 3)),
+        (2, Some(Plus), Reduce(Expr, 1)),
+        (2, Some(Asterisk), Shift(7)),
+        (2, Some(Close), Reduce(Expr, 1)),
+        (2, None, Reduce(Expr, 1)),
+        (3, Some(Plus), Reduce(Term, 1)),
+        (3, Some(Asterisk), Reduce(Term, 1)),
+        (3, Some(Close), Reduce(Term, 1)),
+        (3, None, Reduce(Term, 1)),
+        (4, Some(Plus), Reduce(Factor, 1)),
+        (4, Some(Asterisk), Reduce(Factor, 1)),
+        (4, Some(Close), Reduce(Factor, 1)),
+        (4, None, Reduce(Factor, 1)),
+        (5, Some(X), Shift(4)),
+        (5, Some(Open), Shift(5)),
+        (6, Some(X), Shift(4)),
+        (6, Some(Open), Shift(5)),
+        (7, Some(X), Shift(4)),
+        (7, Some(Open), Shift(5)),
+        (8, Some(Plus), Shift(6)),
+        (8, Some(Close), Shift(11)),
+        (9, Some(Plus), Reduce(Expr, 3)),
+        (9, Some(Asterisk), Shift(7)),
+        (9, Some(Close), Reduce(Expr, 3)),
+        (9, None, Reduce(Expr, 3)),
+        (10, Some(Plus), Reduce(Term, 3)),
+        (10, Some(Asterisk), Reduce(Term, 3)),
+        (10, Some(Close), Reduce(Term, 3)),
+        (10, None, Reduce(Term, 3)),
+        (11, Some(Plus), Reduce(Factor, 3)),
+        (11, Some(Asterisk), Reduce(Factor, 3)),
+        (11, Some(Close), Reduce(Factor, 3)),
+        (11, None, Reduce(Factor, 3)),
     ];
 
     for &(state, input, expected) in actions {
@@ -410,16 +386,16 @@ fn can_generate_parse_table_for_simple_grammar() {
         assert_eq!(expected, actual, "state: {state}, input: {input:?}");
     }
 
-    let gotos: &[(usize, Nonterminal, usize)] = &[
-        (0, expr, 1),
-        (0, term, 2),
-        (0, factor, 3),
-        (5, expr, 8),
-        (5, term, 2),
-        (5, factor, 3),
-        (6, term, 9),
-        (6, factor, 3),
-        (7, factor, 10),
+    let gotos = &[
+        (0, Expr, 1),
+        (0, Term, 2),
+        (0, Factor, 3),
+        (5, Expr, 8),
+        (5, Term, 2),
+        (5, Factor, 3),
+        (6, Term, 9),
+        (6, Factor, 3),
+        (7, Factor, 10),
     ];
 
     for &(state, nonterminal, expected) in gotos {
@@ -433,17 +409,16 @@ fn can_generate_parse_table_for_simple_grammar() {
 
 #[test]
 fn can_report_shift_reduce_conflict_in_table() {
-    // S -> a X b
-    // X -> c
-    // X -> c b
-    let (s, mut grammar) = Grammar::new();
-    let x = grammar.add_nonterminal("X");
-    let a = grammar.add_terminal("a");
-    let b = grammar.add_terminal("b");
-    let c = grammar.add_terminal("c");
-    grammar.add_rule(s).terminal(a).nonterminal(x).terminal(b);
-    grammar.add_rule(x).terminal(c);
-    grammar.add_rule(x).terminal(c).terminal(b);
+    define_nonterminal!(N: [S, X]);
+    define_terminal!(T: [A, B, C]);
+    let mut grammar = Grammar::new(N::S);
+    grammar
+        .add_rule(N::S)
+        .terminal(T::A)
+        .nonterminal(N::X)
+        .terminal(T::B);
+    grammar.add_rule(N::X).terminal(T::C);
+    grammar.add_rule(N::X).terminal(T::C).terminal(T::B);
     let grammar = grammar.validate().unwrap();
     let error = grammar.parse_table().unwrap_err();
 
@@ -452,18 +427,13 @@ fn can_report_shift_reduce_conflict_in_table() {
 
 #[test]
 fn can_report_reduce_reduce_conflict_in_table() {
-    // S -> X
-    // S -> Y
-    // X -> a
-    // Y -> a
-    let (s, mut grammar) = Grammar::new();
-    let x = grammar.add_nonterminal("X");
-    let y = grammar.add_nonterminal("Y");
-    let a = grammar.add_terminal("a");
-    grammar.add_rule(s).nonterminal(x);
-    grammar.add_rule(s).nonterminal(y);
-    grammar.add_rule(x).terminal(a);
-    grammar.add_rule(y).terminal(a);
+    define_nonterminal!(N: [S, X, Y]);
+    define_terminal!(T: [A]);
+    let mut grammar = Grammar::new(N::S);
+    grammar.add_rule(N::S).nonterminal(N::X);
+    grammar.add_rule(N::S).nonterminal(N::Y);
+    grammar.add_rule(N::X).terminal(T::A);
+    grammar.add_rule(N::Y).terminal(T::A);
     let grammar = grammar.validate().unwrap();
     let error = grammar.parse_table().unwrap_err();
     assert_eq!(ParseTableConflict::ReduceReduce, error);
@@ -471,104 +441,70 @@ fn can_report_reduce_reduce_conflict_in_table() {
 
 #[test]
 fn can_parse_simple_input() {
-    // S' -> E
-    // E -> E + T
-    // E -> T
-    // T -> T * F
-    // T -> F
-    // F -> x
-    // F -> ( E )
-    let (expr, mut grammar) = Grammar::new();
-    let term = grammar.add_nonterminal("T");
-    let factor = grammar.add_nonterminal("F");
-    let plus = grammar.add_terminal("+");
-    let asterisk = grammar.add_terminal("*");
-    let x = grammar.add_terminal("x");
-    let open = grammar.add_terminal("(");
-    let close = grammar.add_terminal(")");
-    grammar
-        .add_rule(expr)
-        .nonterminal(expr)
-        .terminal(plus)
-        .nonterminal(term);
-    grammar.add_rule(expr).nonterminal(term);
-    grammar
-        .add_rule(term)
-        .nonterminal(term)
-        .terminal(asterisk)
-        .nonterminal(factor);
-    grammar.add_rule(term).nonterminal(factor);
-    grammar.add_rule(factor).terminal(x);
-    grammar
-        .add_rule(factor)
-        .terminal(open)
-        .nonterminal(expr)
-        .terminal(close);
-    let grammar = grammar.validate().unwrap();
-    let table = grammar.parse_table().unwrap();
+    use {ExampleNonterminal::*, ExampleTerminal::*};
+    let table = simple_example_grammar();
 
     // (x + x) * (x + x) + x
     let input = [
-        open, x, plus, x, close, asterisk, open, x, plus, x, close, plus, x,
+        Open, X, Plus, X, Close, Asterisk, Open, X, Plus, X, Close, Plus, X,
     ]
     .into_iter();
 
     use ParseTree::{Nonterminal as N, Terminal as T};
     #[rustfmt::skip]
-    let expected: ParseTree = N(expr, vec![
-        N(expr, vec![
-            N(term, vec![
-                N(term, vec![
-                    N(factor, vec![
-                        T(open),
-                        N(expr, vec![
-                            N(expr, vec![
-                                N(term, vec![
-                                    N(factor, vec![
-                                        T(x),
+    let expected = N(Expr, vec![
+        N(Expr, vec![
+            N(Term, vec![
+                N(Term, vec![
+                    N(Factor, vec![
+                        T(Open),
+                        N(Expr, vec![
+                            N(Expr, vec![
+                                N(Term, vec![
+                                    N(Factor, vec![
+                                        T(X),
                                     ]),
                                 ])
                             ]),
-                            T(plus),
-                            N(term, vec![
-                                N(factor, vec![
-                                    T(x),
+                            T(Plus),
+                            N(Term, vec![
+                                N(Factor, vec![
+                                    T(X),
                                 ]),
                             ])
                         ]),
-                        T(close),
+                        T(Close),
                     ]),
                 ]),
-                T(asterisk),
-                N(factor, vec![
-                    T(open),
-                    N(expr, vec![
-                        N(expr, vec![
-                            N(term, vec![
-                                N(factor, vec![
-                                    T(x),
+                T(Asterisk),
+                N(Factor, vec![
+                    T(Open),
+                    N(Expr, vec![
+                        N(Expr, vec![
+                            N(Term, vec![
+                                N(Factor, vec![
+                                    T(X),
                                 ]),
                             ])
                             ]),
-                        T(plus),
-                        N(term, vec![
-                            N(factor, vec![
-                                T(x),
+                        T(Plus),
+                        N(Term, vec![
+                            N(Factor, vec![
+                                T(X),
                             ]),
                         ])
                     ]),
-                    T(close),
+                    T(Close),
                 ]),
             ]),
         ]),
-        T(plus),
-        N(term, vec![
-            N(factor, vec![
-                T(x),
+        T(Plus),
+        N(Term, vec![
+            N(Factor, vec![
+                T(X),
             ]),
         ]),
     ]);
 
-    let parse_tree: ParseTree = table.parse(input);
-    assert_eq!(expected, parse_tree);
+    assert_eq!(expected, table.parse(input));
 }
