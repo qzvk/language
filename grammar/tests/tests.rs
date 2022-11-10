@@ -448,7 +448,19 @@ fn can_parse_simple_input() {
 
     // (x + x) * (x + x) + x
     let input = [
-        Open, X, Plus, X, Close, Asterisk, Open, X, Plus, X, Close, Plus, X,
+        (Open, 0),
+        (X, 1),
+        (Plus, 2),
+        (X, 3),
+        (Close, 4),
+        (Asterisk, 5),
+        (Open, 6),
+        (X, 7),
+        (Plus, 8),
+        (X, 9),
+        (Close, 10),
+        (Plus, 11),
+        (X, 12),
     ]
     .into_iter();
 
@@ -459,51 +471,51 @@ fn can_parse_simple_input() {
             N(Term, vec![
                 N(Term, vec![
                     N(Factor, vec![
-                        T(Open),
+                        T(Open, 0),
                         N(Expr, vec![
                             N(Expr, vec![
                                 N(Term, vec![
                                     N(Factor, vec![
-                                        T(X),
+                                        T(X, 1),
                                     ]),
                                 ])
                             ]),
-                            T(Plus),
+                            T(Plus, 2),
                             N(Term, vec![
                                 N(Factor, vec![
-                                    T(X),
+                                    T(X, 3),
                                 ]),
                             ])
                         ]),
-                        T(Close),
+                        T(Close, 4),
                     ]),
                 ]),
-                T(Asterisk),
+                T(Asterisk, 5),
                 N(Factor, vec![
-                    T(Open),
+                    T(Open, 6),
                     N(Expr, vec![
                         N(Expr, vec![
                             N(Term, vec![
                                 N(Factor, vec![
-                                    T(X),
+                                    T(X, 7),
                                 ]),
                             ])
                             ]),
-                        T(Plus),
+                        T(Plus, 8),
                         N(Term, vec![
                             N(Factor, vec![
-                                T(X),
+                                T(X, 9),
                             ]),
                         ])
                     ]),
-                    T(Close),
+                    T(Close, 10),
                 ]),
             ]),
         ]),
-        T(Plus),
+        T(Plus, 11),
         N(Term, vec![
             N(Factor, vec![
-                T(X),
+                T(X, 12),
             ]),
         ]),
     ]);
@@ -517,7 +529,17 @@ fn can_report_syntax_error() {
 
     // (x + x) * + x
     use ExampleTerminal::*;
-    let input = [Open, X, Plus, X, Close, Asterisk, Plus, X].into_iter();
+    let input = [
+        (Open, 0),
+        (X, 1),
+        (Plus, 2),
+        (X, 3),
+        (Close, 4),
+        (Asterisk, 5),
+        (Plus, 6),
+        (X, 7),
+    ]
+    .into_iter();
 
     let expected = {
         let mut set = HashSet::new();
@@ -526,7 +548,8 @@ fn can_report_syntax_error() {
         set
     };
 
-    let error = table.parse(input).unwrap_err();
+    let (error, position) = table.parse(input).unwrap_err();
     assert_eq!(Some(Plus), error.actual());
     assert_eq!(&expected, error.expected());
+    assert_eq!(Some(6), position);
 }

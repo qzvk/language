@@ -773,6 +773,8 @@ pub struct ParseTable<N, T> {
     gotos: HashMap<(usize, N), usize>,
 }
 
+type ParseErrorInfo<T, I> = (ParseError<T>, Option<I>);
+
 impl<N: Nonterminal, T: Terminal> ParseTable<N, T> {
     /// The corresponding action for the given state and input. `None` represents the endmarker.
     pub fn action(&self, state: usize, input: Option<T>) -> ParseAction<N> {
@@ -794,23 +796,25 @@ impl<N: Nonterminal, T: Terminal> ParseTable<N, T> {
         self.gotos[&(state, input)]
     }
 
-    /// Parse a sequence of terminals into a parse tree.
-    pub fn parse(
+    /// Parse a sequence of terminals and additional information into a parse tree.
+    pub fn parse<I: Copy>(
         &self,
-        mut input: impl Iterator<Item = T>,
-    ) -> Result<ParseTree<N, T>, ParseError<T>> {
+        mut input: impl Iterator<Item = (T, I)>,
+    ) -> Result<ParseTree<N, T, I>, ParseErrorInfo<T, I>> {
         // Dummy parse tree for the initial state, never gets touched, just needs to exist.
-        let dummy_tree = ParseTree::Terminal(T::from_index(0));
-
         let mut a = input.next();
-        let mut stack = vec![(dummy_tree, 0)];
+        let mut stack = Vec::new();
 
         loop {
-            let (_, head_state) = stack.last().cloned().unwrap();
+            let head_state = match stack.last() {
+                Some(&(_, state)) => state,
+                None => 0,
+            };
 
-            match self.action(head_state, a) {
+            match self.action(head_state, a.map(|x| x.0)) {
                 ParseAction::Shift(t) => {
-                    stack.push((ParseTree::Terminal(a.unwrap()), t));
+                    let (token, info) = a.unwrap();
+                    stack.push((ParseTree::Terminal(token, info), t));
                     a = input.next();
                 }
 
@@ -824,7 +828,10 @@ impl<N: Nonterminal, T: Terminal> ParseTable<N, T> {
 
                     let tree = ParseTree::Nonterminal(a, subtrees);
 
-                    let (_, t) = stack.last().cloned().unwrap();
+                    let t = match stack.last() {
+                        Some(&(_, state)) => state,
+                        None => 0,
+                    };
 
                     stack.push((tree, self.goto(t, a)));
                 }
@@ -837,9 +844,12 @@ impl<N: Nonterminal, T: Terminal> ParseTable<N, T> {
                         }
                     }
 
-                    let actual = a;
+                    let (actual, info) = match a.take() {
+                        Some((t, i)) => (Some(t), Some(i)),
+                        None => (None, None),
+                    };
                     let error = ParseError { expected, actual };
-                    return Err(error);
+                    return Err((error, info));
                 }
 
                 ParseAction::Accept => break,
@@ -847,7 +857,7 @@ impl<N: Nonterminal, T: Terminal> ParseTable<N, T> {
         }
 
         // Check that the stack contains the 'dummy' start state's tree, and the final result tree.
-        assert_eq!(2, stack.len());
+        assert_eq!(1, stack.len());
 
         let tree = stack.pop().unwrap().0;
         Ok(tree)
@@ -856,9 +866,9 @@ impl<N: Nonterminal, T: Terminal> ParseTable<N, T> {
 
 /// A tree of symbols generated during parsing.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ParseTree<N, T> {
-    /// A terminal node, corresponding to an input symbol.
-    Terminal(T),
+pub enum ParseTree<N, T, I> {
+    /// A terminal node and position information, corresponding to an input symbol.
+    Terminal(T, I),
 
     /// A nonterminal node, containing subtrees.
     Nonterminal(N, Vec<Self>),

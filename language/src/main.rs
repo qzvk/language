@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use grammar::{Grammar, Nonterminal as _, ParseTable, ParseTree, Symbol, Terminal as _};
-use lexer::TokenKind;
+use lexer::{TokenInfo, TokenKind};
 use std::io::{stdin, Read};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -285,13 +285,13 @@ fn generate_parse_table(verbose: bool) -> ParseTable<Nonterminal, Terminal> {
     proper_grammar.parse_table().unwrap()
 }
 
-fn print_parse_tree(indent: usize, tree: ParseTree<Nonterminal, Terminal>) {
+fn print_parse_tree(indent: usize, tree: ParseTree<Nonterminal, Terminal, TokenInfo>) {
     match tree {
-        ParseTree::Terminal(terminal) => {
+        ParseTree::Terminal(terminal, info) => {
             for _ in 0..indent {
                 print!("    ");
             }
-            println!("{}", terminal.as_str());
+            println!("{} ({})", terminal.as_str(), info);
         }
 
         ParseTree::Nonterminal(nonterminal, children) => {
@@ -334,7 +334,7 @@ fn main() {
 
     let mut lex_errors = Vec::new();
     let tokens = lexer::lex(&input).filter_map(|(result, info)| match result {
-        Ok(token) => Some(Terminal(token)),
+        Ok(token) => Some((Terminal(token), info)),
         Err(error) => {
             lex_errors.push((error, info));
             None
@@ -359,6 +359,13 @@ fn main() {
     match parse_result {
         Ok(tree) => print_parse_tree(0, tree),
 
-        Err(error) => println!("{error}"),
+        Err((error, Some(info))) => println!(
+            "{}:{}: error: {}",
+            info.line() + 1,
+            info.column() + 1,
+            error
+        ),
+
+        Err((error, None)) => println!("EOF: error: {}", error),
     }
 }
