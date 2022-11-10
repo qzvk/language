@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use grammar::{
     Error, Grammar, Nonterminal, ParseAction, ParseTable, ParseTableConflict, ParseTree, Symbol,
     Terminal,
@@ -506,5 +508,25 @@ fn can_parse_simple_input() {
         ]),
     ]);
 
-    assert_eq!(expected, table.parse(input));
+    assert_eq!(expected, table.parse(input).unwrap());
+}
+
+#[test]
+fn can_report_syntax_error() {
+    let table = simple_example_grammar();
+
+    // (x + x) * + x
+    use ExampleTerminal::*;
+    let input = [Open, X, Plus, X, Close, Asterisk, Plus, X].into_iter();
+
+    let expected = {
+        let mut set = HashSet::new();
+        set.insert(Some(Open));
+        set.insert(Some(X));
+        set
+    };
+
+    let error = table.parse(input).unwrap_err();
+    assert_eq!(Some(Plus), error.actual());
+    assert_eq!(&expected, error.expected());
 }

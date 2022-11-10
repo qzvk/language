@@ -341,7 +341,7 @@ fn main() {
         }
     });
 
-    let parse_tree = table.parse(tokens);
+    let parse_result = table.parse(tokens);
 
     if !lex_errors.is_empty() {
         for (error, info) in lex_errors {
@@ -356,5 +356,9 @@ fn main() {
         return;
     }
 
-    print_parse_tree(0, parse_tree);
+    match parse_result {
+        Ok(tree) => print_parse_tree(0, tree),
+
+        Err(error) => println!("{error}"),
+    }
 }

@@ -6,7 +6,11 @@
 mod cycle;
 
 use crate::cycle::find_cycles;
-use std::{collections::HashMap, fmt::Debug, hash::Hash};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    hash::Hash,
+};
 
 /// A type which is used to represent a nonterminal during parsing.
 pub trait Nonterminal: Debug + Copy + Ord + Hash {
@@ -791,7 +795,10 @@ impl<N: Nonterminal, T: Terminal> ParseTable<N, T> {
     }
 
     /// Parse a sequence of terminals into a parse tree.
-    pub fn parse(&self, mut input: impl Iterator<Item = T>) -> ParseTree<N, T> {
+    pub fn parse(
+        &self,
+        mut input: impl Iterator<Item = T>,
+    ) -> Result<ParseTree<N, T>, ParseError<T>> {
         // Dummy parse tree for the initial state, never gets touched, just needs to exist.
         let dummy_tree = ParseTree::Terminal(T::from_index(0));
 
@@ -822,7 +829,18 @@ impl<N: Nonterminal, T: Terminal> ParseTable<N, T> {
                     stack.push((tree, self.goto(t, a)));
                 }
 
-                ParseAction::Error => todo!("Handling errors during parsing is not implemented."),
+                ParseAction::Error => {
+                    let mut expected = HashSet::new();
+                    for &(state, input) in self.actions.keys() {
+                        if state == head_state {
+                            expected.insert(input);
+                        }
+                    }
+
+                    let actual = a;
+                    let error = ParseError { expected, actual };
+                    return Err(error);
+                }
 
                 ParseAction::Accept => break,
             }
@@ -831,7 +849,8 @@ impl<N: Nonterminal, T: Terminal> ParseTable<N, T> {
         // Check that the stack contains the 'dummy' start state's tree, and the final result tree.
         assert_eq!(2, stack.len());
 
-        stack.pop().unwrap().0
+        let tree = stack.pop().unwrap().0;
+        Ok(tree)
     }
 }
 
@@ -844,6 +863,64 @@ pub enum ParseTree<N, T> {
     /// A nonterminal node, containing subtrees.
     Nonterminal(N, Vec<Self>),
 }
+
+/// An error encountered during parsing.
+#[derive(Clone, Debug)]
+pub struct ParseError<T: Terminal> {
+    expected: HashSet<Option<T>>,
+    actual: Option<T>,
+}
+
+impl<T: Terminal> ParseError<T> {
+    /// The set of expected inputs (the endmarker represented by `None`).
+    pub fn expected(&self) -> &HashSet<Option<T>> {
+        &self.expected
+    }
+
+    /// The erroneous input (the endmarker represented by `None`).
+    pub fn actual(&self) -> Option<T> {
+        self.actual
+    }
+}
+
+impl<T: Terminal> std::fmt::Display for ParseError<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let actual_str = match self.actual {
+            Some(terminal) => terminal.as_str(),
+            None => "EOF",
+        };
+
+        if self.expected.is_empty() {
+            panic!("error from 0-expectation state, this is a bug");
+        } else if self.expected.len() == 1 {
+            let expected = self.expected.iter().next().unwrap();
+            let expected_str = match expected {
+                Some(terminal) => terminal.as_str(),
+                None => "EOF",
+            };
+            write!(f, "expected {} but found {}", expected_str, actual_str)
+        } else {
+            let expected: Vec<_> = self
+                .expected
+                .iter()
+                .map(|item| match item {
+                    Some(terminal) => terminal.as_str(),
+                    None => "EOF",
+                })
+                .collect();
+
+            let expected_str = expected.join(", ");
+
+            write!(
+                f,
+                "expected one of: {} but found {}",
+                expected_str, actual_str
+            )
+        }
+    }
+}
+
+impl<T: Terminal> std::error::Error for ParseError<T> {}
 
 #[cfg(test)]
 mod tests {
