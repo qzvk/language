@@ -1,8 +1,14 @@
 #![forbid(unsafe_code)]
 
+mod args;
+
+use args::Args;
 use grammar::{Nonterminal as _, ParseTree, Terminal as _};
 use language::{Nonterminal, TokenInfo, TokenKind};
-use std::io::{stdin, Read};
+use std::{
+    io::{stdin, Read},
+    process::ExitCode,
+};
 
 fn print_parse_tree(indent: usize, tree: ParseTree<Nonterminal, TokenKind, TokenInfo>) {
     match tree {
@@ -29,27 +35,68 @@ fn print_parse_tree(indent: usize, tree: ParseTree<Nonterminal, TokenKind, Token
     }
 }
 
-fn main() {
-    let help = std::env::args().any(|arg| arg == "--help");
-    let verbose = std::env::args().any(|arg| arg == "--verbose");
+#[derive(Debug)]
+enum Error {
+    Args(args::Error),
+    BadFilename(std::io::Error),
+    BadInput(usize),
+}
 
-    if help {
-        println!("interpreter 0.1.0");
-        println!("Small experimental pure-functional language interpreter.");
-        println!();
-        println!("USAGE");
-        println!("    interpreter OPTIONS?");
-        println!();
-        println!("OPTIONS");
-        println!("    --help      Display this help text.");
-        println!("    --verbose   Print grammar information during parse table generation.");
-        return;
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::Args(error) => error.fmt(f),
+            Error::BadFilename(error) => write!(f, "failed to read input: {error}"),
+            Error::BadInput(1) => write!(f, "1 error generated."),
+            Error::BadInput(count) => write!(f, "{count} errors generated."),
+        }
     }
+}
 
+impl std::error::Error for Error {}
+
+impl From<args::Error> for Error {
+    fn from(error: args::Error) -> Self {
+        Error::Args(error)
+    }
+}
+
+fn help() -> Result<(), Error> {
+    version()?;
+    println!("{}", env!("CARGO_PKG_DESCRIPTION"));
+    println!();
+    println!("USAGE");
+    println!("    interpreter [OPTIONS] <FILENAME>");
+    println!();
+    println!("OPTIONS");
+    println!("    -h --help       Display this help text");
+    println!("    -V --version    Print version info and exit");
+    println!("    -v --verbose    Display grammar information");
+    Ok(())
+}
+
+fn version() -> Result<(), Error> {
+    println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    Ok(())
+}
+
+fn read_input(filename: Option<String>) -> Result<String, Error> {
+    if let Some(filename) = filename {
+        std::fs::read_to_string(filename).map_err(Error::BadFilename)
+    } else {
+        let mut input = String::new();
+        stdin()
+            .read_to_string(&mut input)
+            .map_err(Error::BadFilename)?;
+
+        Ok(input)
+    }
+}
+
+fn execute(filename: Option<String>, verbose: bool) -> Result<(), Error> {
     let table = language::parse_table(verbose);
 
-    let mut input = String::new();
-    stdin().read_to_string(&mut input).unwrap();
+    let input = read_input(filename)?;
 
     let mut lex_errors = Vec::new();
     let tokens = lexer::lex(&input).filter_map(|(result, info)| match result {
@@ -63,7 +110,7 @@ fn main() {
     let parse_result = table.parse(tokens);
 
     if !lex_errors.is_empty() {
-        for (error, info) in lex_errors {
+        for (error, info) in &lex_errors {
             println!(
                 "{}:{}: error: {}",
                 info.line() + 1,
@@ -72,19 +119,48 @@ fn main() {
             );
         }
 
-        return;
+        return Err(Error::BadInput(lex_errors.len()));
     }
 
-    match parse_result {
-        Ok(tree) => print_parse_tree(0, tree),
+    let parse_tree = match parse_result {
+        Ok(tree) => tree,
 
-        Err((error, Some(info))) => println!(
-            "{}:{}: error: {}",
-            info.line() + 1,
-            info.column() + 1,
-            error
-        ),
+        Err((error, None)) => {
+            println!("EOF: error: {}", error);
+            return Err(Error::BadInput(1));
+        }
 
-        Err((error, None)) => println!("EOF: error: {}", error),
+        Err((error, Some(info))) => {
+            println!(
+                "{}:{}: error: {}",
+                info.line() + 1,
+                info.column() + 1,
+                error
+            );
+            return Err(Error::BadInput(1));
+        }
+    };
+
+    print_parse_tree(0, parse_tree);
+    Ok(())
+}
+
+fn run() -> Result<(), Error> {
+    let input_args = std::env::args().skip(1);
+    let args = args::parse(input_args)?;
+
+    match args {
+        Args::Help => help(),
+        Args::Version => version(),
+        Args::Run { filename, verbose } => execute(filename, verbose),
+    }
+}
+
+fn main() -> ExitCode {
+    if let Err(error) = run() {
+        println!("Error: {error}");
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
     }
 }
