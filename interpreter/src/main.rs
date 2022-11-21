@@ -3,37 +3,10 @@
 mod args;
 
 use args::Args;
-use grammar::{Nonterminal as _, ParseTree, Terminal as _};
-use language::{Nonterminal, TokenInfo, TokenKind};
 use std::{
     io::{stdin, Read},
     process::ExitCode,
 };
-
-fn print_parse_tree(indent: usize, tree: ParseTree<Nonterminal, TokenKind, TokenInfo>) {
-    match tree {
-        ParseTree::Terminal(terminal, info) => {
-            for _ in 0..indent {
-                print!("    ");
-            }
-            println!("{} ({})", terminal.as_str(), info);
-        }
-
-        ParseTree::Nonterminal(nonterminal, children) => {
-            for _ in 0..indent {
-                print!("    ");
-            }
-            println!("({}", nonterminal.as_str());
-            for child in children {
-                print_parse_tree(indent + 1, child);
-            }
-            for _ in 0..indent {
-                print!("    ");
-            }
-            println!(")");
-        }
-    }
-}
 
 #[derive(Debug)]
 enum Error {
@@ -107,7 +80,7 @@ fn execute(filename: Option<String>, verbose: bool) -> Result<(), Error> {
         }
     });
 
-    let parse_result = table.parse(tokens);
+    let parse_result = table.parse(tokens, language::reduce);
 
     if !lex_errors.is_empty() {
         for (error, info) in &lex_errors {
@@ -141,7 +114,8 @@ fn execute(filename: Option<String>, verbose: bool) -> Result<(), Error> {
         }
     };
 
-    print_parse_tree(0, parse_tree);
+    println!("{parse_tree:#?}");
+
     Ok(())
 }
 

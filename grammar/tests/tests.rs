@@ -446,6 +446,12 @@ fn can_parse_simple_input() {
     use {ExampleNonterminal::*, ExampleTerminal::*};
     let table = simple_example_grammar();
 
+    #[derive(Debug, PartialEq, Eq)]
+    struct Node(
+        ExampleNonterminal,
+        Vec<ParseTree<Node, ExampleTerminal, i32>>,
+    );
+
     // (x + x) * (x + x) + x
     let input = [
         (Open, 0),
@@ -464,68 +470,88 @@ fn can_parse_simple_input() {
     ]
     .into_iter();
 
+    fn reduce<'a>(
+        head: ExampleNonterminal,
+        body: Vec<ParseTree<Node, ExampleTerminal, i32>>,
+    ) -> Node {
+        Node(head, body)
+    }
+
     use ParseTree::{Nonterminal as N, Terminal as T};
     #[rustfmt::skip]
-    let expected = N(Expr, vec![
-        N(Expr, vec![
-            N(Term, vec![
-                N(Term, vec![
-                    N(Factor, vec![
+    let expected = Node(Expr, vec![
+        N(Node(Expr, vec![
+            N(Node(Term, vec![
+                N(Node(Term, vec![
+                    N(Node(Factor, vec![
                         T(Open, 0),
-                        N(Expr, vec![
-                            N(Expr, vec![
-                                N(Term, vec![
-                                    N(Factor, vec![
+                        N(Node(Expr, vec![
+                            N(Node(Expr, vec![
+                                N(Node(Term, vec![
+                                    N(Node(Factor, vec![
                                         T(X, 1),
-                                    ]),
-                                ])
-                            ]),
+                                    ])),
+                                ]))
+                            ])),
                             T(Plus, 2),
-                            N(Term, vec![
-                                N(Factor, vec![
+                            N(Node(Term, vec![
+                                N(Node(Factor, vec![
                                     T(X, 3),
-                                ]),
-                            ])
-                        ]),
+                                ])),
+                            ]))
+                        ])),
                         T(Close, 4),
-                    ]),
-                ]),
+                    ])),
+                ])),
                 T(Asterisk, 5),
-                N(Factor, vec![
+                N(Node(Factor, vec![
                     T(Open, 6),
-                    N(Expr, vec![
-                        N(Expr, vec![
-                            N(Term, vec![
-                                N(Factor, vec![
+                    N(Node(Expr, vec![
+                        N(Node(Expr, vec![
+                            N(Node(Term, vec![
+                                N(Node(Factor, vec![
                                     T(X, 7),
-                                ]),
-                            ])
-                            ]),
+                                ])),
+                            ]))
+                        ])),
                         T(Plus, 8),
-                        N(Term, vec![
-                            N(Factor, vec![
+                        N(Node(Term, vec![
+                            N(Node(Factor, vec![
                                 T(X, 9),
-                            ]),
-                        ])
-                    ]),
+                            ])),
+                        ]))
+                    ])),
                     T(Close, 10),
-                ]),
-            ]),
-        ]),
+                ])),
+            ])),
+        ])),
         T(Plus, 11),
-        N(Term, vec![
-            N(Factor, vec![
+        N(Node(Term, vec![
+            N(Node(Factor, vec![
                 T(X, 12),
-            ]),
-        ]),
+            ])),
+        ])),
     ]);
 
-    assert_eq!(expected, table.parse(input).unwrap());
+    assert_eq!(expected, table.parse(input, reduce).unwrap());
 }
 
 #[test]
 fn can_report_syntax_error() {
     let table = simple_example_grammar();
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct Node(
+        ExampleNonterminal,
+        Vec<ParseTree<Node, ExampleTerminal, i32>>,
+    );
+
+    fn reduce<'a>(
+        head: ExampleNonterminal,
+        body: Vec<ParseTree<Node, ExampleTerminal, i32>>,
+    ) -> Node {
+        Node(head, body)
+    }
 
     // (x + x) * + x
     use ExampleTerminal::*;
@@ -548,7 +574,7 @@ fn can_report_syntax_error() {
         set
     };
 
-    let (error, position) = table.parse(input).unwrap_err();
+    let (error, position) = table.parse(input, reduce).unwrap_err();
     assert_eq!(Some(Plus), error.actual());
     assert_eq!(&expected, error.expected());
     assert_eq!(Some(6), position);

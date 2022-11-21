@@ -797,10 +797,11 @@ impl<N: Nonterminal, T: Terminal> ParseTable<N, T> {
     }
 
     /// Parse a sequence of terminals and additional information into a parse tree.
-    pub fn parse<I: Copy>(
+    pub fn parse<I: Copy, M>(
         &self,
         mut input: impl Iterator<Item = (T, I)>,
-    ) -> Result<ParseTree<N, T, I>, ParseErrorInfo<T, I>> {
+        reduce: impl Fn(N, Vec<ParseTree<M, T, I>>) -> M,
+    ) -> Result<M, ParseErrorInfo<T, I>> {
         // Dummy parse tree for the initial state, never gets touched, just needs to exist.
         let mut a = input.next();
         let mut stack = Vec::new();
@@ -826,7 +827,7 @@ impl<N: Nonterminal, T: Terminal> ParseTable<N, T> {
                         subtrees.push(item);
                     }
 
-                    let tree = ParseTree::Nonterminal(a, subtrees);
+                    let tree = ParseTree::Nonterminal(reduce(a, subtrees));
 
                     let t = match stack.last() {
                         Some(&(_, state)) => state,
@@ -856,11 +857,12 @@ impl<N: Nonterminal, T: Terminal> ParseTable<N, T> {
             }
         }
 
-        // Check that the stack contains the 'dummy' start state's tree, and the final result tree.
         assert_eq!(1, stack.len());
 
-        let tree = stack.pop().unwrap().0;
-        Ok(tree)
+        match stack.pop() {
+            Some((ParseTree::Nonterminal(root), _)) => Ok(root),
+            _ => panic!(),
+        }
     }
 }
 
@@ -871,7 +873,7 @@ pub enum ParseTree<N, T, I> {
     Terminal(T, I),
 
     /// A nonterminal node, containing subtrees.
-    Nonterminal(N, Vec<Self>),
+    Nonterminal(N),
 }
 
 /// An error encountered during parsing.
