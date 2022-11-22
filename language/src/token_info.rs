@@ -25,6 +25,11 @@ impl<'a> TokenInfo<'a> {
     pub fn column(&self) -> u32 {
         self.column
     }
+
+    /// The source string of the token.
+    pub fn source(&self) -> &str {
+        self.source
+    }
 }
 
 impl<'a> std::fmt::Display for TokenInfo<'a> {
