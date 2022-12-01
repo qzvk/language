@@ -173,7 +173,7 @@ pub fn reduce<'a>(
                 Some(ParseTree::Nonterminal(Node::AssignmentSeq(assignment_seq))) => {
                     assert!(matches!(
                         body.pop(),
-                        Some(ParseTree::Terminal(TokenKind::Equals, _))
+                        Some(ParseTree::Terminal(TokenKind::Semicolon, _))
                     ));
 
                     match body.pop() {
