@@ -1,9 +1,5 @@
 [workspace]
 members = [
-    "ast",
-    "grammar",
-    "interpreter",
-    "language",
     "lexer",
 ]
 
