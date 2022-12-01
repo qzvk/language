@@ -3,5 +3,19 @@
 version = 3
 
 [[package]]
+name = "driver"
+version = "0.1.0"
+dependencies = [
+ "lexer",
+]
+
+[[package]]
+name = "interpreter"
+version = "0.1.0"
+dependencies = [
+ "driver",
+]
+
+[[package]]
 name = "lexer"
 version = "0.1.0"

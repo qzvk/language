@@ -2,10 +2,7 @@
 pub enum Args {
     Help,
     Version,
-    Run {
-        filename: Option<String>,
-        verbose: bool,
-    },
+    Run { path: Option<String>, verbose: bool },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18,9 +15,9 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::NoInputFile => write!(f, "no input file"),
-            Error::TooManyInputFiles => write!(f, "too many input files"),
-            Error::UnknownOption(option) => write!(f, "unknown option {option:?}"),
+            Error::NoInputFile => write!(f, "error: no input file"),
+            Error::TooManyInputFiles => write!(f, "error: too many input files"),
+            Error::UnknownOption(option) => write!(f, "error: unknown option {option:?}"),
         }
     }
 }
@@ -47,7 +44,10 @@ pub fn parse(args: impl Iterator<Item = String>) -> Result<Args, Error> {
     }
 
     if let Some(filename) = input {
-        Ok(Args::Run { filename, verbose })
+        Ok(Args::Run {
+            path: filename,
+            verbose,
+        })
     } else {
         Err(Error::NoInputFile)
     }
@@ -70,7 +70,7 @@ mod tests {
         let output = parse(input).unwrap();
         assert_eq!(
             Args::Run {
-                filename: Some(String::from("myscript.txt")),
+                path: Some(String::from("myscript.txt")),
                 verbose: false,
             },
             output
@@ -90,7 +90,7 @@ mod tests {
         let output = parse(input).unwrap();
         assert_eq!(
             Args::Run {
-                filename: Some(String::from("--help")),
+                path: Some(String::from("--help")),
                 verbose: false,
             },
             output
@@ -125,7 +125,7 @@ mod tests {
         let output = parse(input).unwrap();
         assert_eq!(
             Args::Run {
-                filename: Some(String::from("example.txt")),
+                path: Some(String::from("example.txt")),
                 verbose: true
             },
             output
@@ -135,7 +135,7 @@ mod tests {
         let output = parse(input).unwrap();
         assert_eq!(
             Args::Run {
-                filename: Some(String::from("-v")),
+                path: Some(String::from("-v")),
                 verbose: true
             },
             output
@@ -155,7 +155,7 @@ mod tests {
         let output = parse(input).unwrap();
         assert_eq!(
             Args::Run {
-                filename: None,
+                path: None,
                 verbose: false
             },
             output

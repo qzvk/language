@@ -44,6 +44,24 @@ pub enum TokenKind {
     Unknown,
 }
 
+impl std::fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenKind::Semicolon => f.write_str("semicolon'"),
+            TokenKind::Equals => f.write_str("equals"),
+            TokenKind::OpenParen => f.write_str("open-paren"),
+            TokenKind::CloseParen => f.write_str("close-paren"),
+            TokenKind::Plus => f.write_str("plus"),
+            TokenKind::Minus => f.write_str("minus"),
+            TokenKind::Asterisk => f.write_str("asterisk"),
+            TokenKind::Slash => f.write_str("slash"),
+            TokenKind::Ident => f.write_str("ident"),
+            TokenKind::Integer => f.write_str("integer"),
+            TokenKind::Unknown => f.write_str("unknown"),
+        }
+    }
+}
+
 /// A span of the input string.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Span<'a> {
@@ -53,13 +71,28 @@ pub struct Span<'a> {
 }
 
 impl<'a> Span<'a> {
-    /// Create a new span with the given `line`, `column` and `source`.
+    /// Create a new span with the given `line`, `column` and `source`
     pub const fn new(line: u32, column: u32, source: &'a str) -> Self {
         Self {
             line,
             column,
             source,
         }
+    }
+
+    /// The line a token started on
+    pub fn line(&self) -> u32 {
+        self.line
+    }
+
+    /// The column a token started on
+    pub fn column(&self) -> u32 {
+        self.column
+    }
+
+    /// The underlying string of a token
+    pub fn source(&self) -> &str {
+        self.source
     }
 }
 

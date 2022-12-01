@@ -1,5 +1,5 @@
 [package]
-name = "interpreter"
+name = "driver"
 authors = ["qzvk <reisuo@protonmail.com>"]
 version = "0.1.0"
 edition = "2021"
@@ -7,4 +7,4 @@ description = "Interpreter for an experimental programming language."
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-driver = { path = "../driver" }
+lexer = { path = "../lexer" }
