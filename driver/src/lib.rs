@@ -21,17 +21,10 @@ pub fn run_stdin(verbose: bool) -> Result<(), Error> {
     run_string(input, verbose)
 }
 
-fn run_string(input: String, verbose: bool) -> Result<(), Error> {
-    if verbose {
-        println!("Input: {input:?}");
-    }
+fn run_string(input: String, _verbose: bool) -> Result<(), Error> {
+    let tokens = lexer::lex(&input);
 
-    for (kind, span) in lexer::lex(&input) {
-        let line = span.line() + 1;
-        let column = span.column() + 1;
-        let source = span.source();
-        println!("{line}:{column} {source} {kind}");
-    }
+    let _result = parser::parse(tokens);
 
     Ok(())
 }

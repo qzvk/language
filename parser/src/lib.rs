@@ -3,9 +3,9 @@
 
 //! Parser crate for the interpreter. Converts token iterator into an abstract syntax tree.
 
-mod assignment;
-mod expr;
+mod parse_tree;
 
+use crate::parse_tree::AssignmentSeq;
 use lexer::Tokens;
 
 /// An abstract syntax tree
@@ -15,6 +15,11 @@ pub struct Ast {}
 pub enum Error {}
 
 /// Parse a token stream into an abstract syntax tree
-pub fn parse(_tokens: Tokens) -> Result<Ast, Error> {
+pub fn parse(tokens: Tokens) -> Result<Ast, Error> {
+    let mut tokens = tokens.peekable();
+    let result = AssignmentSeq::parse(&mut tokens);
+
+    println!("{result:#?}");
+
     todo!()
 }
