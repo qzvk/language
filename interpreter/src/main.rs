@@ -74,7 +74,7 @@ fn run() -> Result<(), Error> {
 
 fn main() -> ExitCode {
     if let Err(error) = run() {
-        eprintln!("{error}");
+        eprint!("{error}");
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS

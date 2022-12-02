@@ -24,7 +24,10 @@ pub fn run_stdin(verbose: bool) -> Result<(), Error> {
 fn run_string(input: String, _verbose: bool) -> Result<(), Error> {
     let tokens = lexer::lex(&input);
 
-    let _result = parser::parse(tokens);
+    // TODO: This is a workaround for the fact that we can't return parse::Error, since it keeps a
+    // reference to `input`. Errors should be handled in this function, and a status returned to
+    // the caller.
+    let _ast = parser::parse(tokens).map_err(|e| Error::Parse(e.to_string()))?;
 
     Ok(())
 }
@@ -37,6 +40,9 @@ pub enum Error {
 
     /// Failed to read standard input
     ReadStdin(std::io::Error),
+
+    /// Failed to parse the input.
+    Parse(String),
 }
 
 impl std::fmt::Display for Error {
@@ -44,6 +50,7 @@ impl std::fmt::Display for Error {
         match self {
             Error::ReadFile(name, inner) => write!(f, "error: failed to read {name:?}: {inner}"),
             Error::ReadStdin(inner) => write!(f, "error: failed to read stdin: {inner}"),
+            Error::Parse(inner) => inner.fmt(f),
         }
     }
 }

@@ -198,20 +198,74 @@ impl<'a> AssignmentSeq<'a> {
     }
 }
 
+/// An error found during parse tree generation.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error<'a> {
+    /// An unknown token started an expression
     UnknownExprStart(Span<'a>),
+
+    /// Expected an expression, saw EOF
     EofExpr,
+
+    /// Expected an assignment, saw EOF
     EofAssignment,
+
+    /// An assignment name was not an identifier
     BadAssignmentName(Span<'a>),
+
+    /// Expected an assignment name, saw an equals
     MissingAssignmentName(Span<'a>),
+
+    /// Saw something other than an identifier in assignment arguments
     UnknownAssignmentArgument(Span<'a>),
+
+    /// Expected an assignment's '=', saw EOF
     EofAssignmentEquals,
 }
 
 impl<'a> std::fmt::Display for Error<'a> {
-    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::UnknownExprStart(span) => {
+                writeln!(
+                    f,
+                    "error: {}:{}: expected an expression, saw {:?}",
+                    span.line() + 1,
+                    span.column() + 1,
+                    span.source(),
+                )
+            }
+            Error::EofExpr => writeln!(f, "error: expected an expression, saw EOF"),
+            Error::EofAssignment => writeln!(f, "error: expected an assignment, saw EOF"),
+            Error::BadAssignmentName(span) => {
+                writeln!(
+                    f,
+                    "error: {}:{}: an assignment's name must be an identifier, saw {:?} instead",
+                    span.line() + 1,
+                    span.column() + 1,
+                    span.source(),
+                )
+            }
+            Error::MissingAssignmentName(span) => {
+                writeln!(
+                    f,
+                    "error: {}:{}: expected an assignment's name, saw {:?} instead",
+                    span.line() + 1,
+                    span.column() + 1,
+                    span.source(),
+                )
+            }
+            Error::UnknownAssignmentArgument(span) => {
+                writeln!(
+                    f,
+                    "error: {}:{}: argument names must be identifiers, saw {:?} instead",
+                    span.line() + 1,
+                    span.column() + 1,
+                    span.source(),
+                )
+            }
+            Error::EofAssignmentEquals => writeln!(f, "error: expected an '=', saw EOF"),
+        }
     }
 }
 
