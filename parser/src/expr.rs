@@ -26,7 +26,14 @@ pub enum Expr<'a> {
     Apply(Box<(Self, Self)>),
 }
 
-pub fn parse_expr<'a, I>(
+fn parse<'a, I>(tokens: &mut Peekable<I>) -> Result<Expr<'a>, Error>
+where
+    I: Iterator<Item = (TokenKind, Span<'a>)>,
+{
+    parse_with_power(tokens, 0)
+}
+
+fn parse_with_power<'a, I>(
     tokens: &mut Peekable<I>,
     minimum_binding_power: u8,
 ) -> Result<Expr<'a>, Error>
@@ -37,7 +44,7 @@ where
         Some((TokenKind::Integer, span)) => Expr::Integer(span),
         Some((TokenKind::Ident, span)) => Expr::Ident(span),
         Some((TokenKind::OpenParen, _)) => {
-            let lhs = parse_expr(tokens, 0)?;
+            let lhs = parse_with_power(tokens, 0)?;
             assert!(matches!(tokens.next(), Some((TokenKind::CloseParen, _))));
             lhs
         }
@@ -72,7 +79,7 @@ where
 
         tokens.next();
 
-        let rhs = parse_expr(tokens, right_binding_power)?;
+        let rhs = parse_with_power(tokens, right_binding_power)?;
         lhs = Expr::Operator(operator, span, Box::new((lhs, rhs)));
     }
 
@@ -95,7 +102,7 @@ mod tests {
                     .into_iter()
                     .peekable();
                 let expected = $expected;
-                let actual = super::parse_expr(&mut input, 0).unwrap();
+                let actual = super::parse(&mut input).unwrap();
                 assert_eq!(expected, actual);
             }
         };

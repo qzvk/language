@@ -3,7 +3,7 @@
 
 //! Parser crate for the interpreter. Converts token iterator into an abstract syntax tree.
 
-mod parse_tree;
+mod expr;
 
 use lexer::Tokens;
 
