@@ -26,7 +26,7 @@ pub enum Expr<'a> {
     Apply(Box<(Self, Self)>),
 }
 
-fn parse<'a, I>(tokens: &mut Peekable<I>) -> Result<Expr<'a>, Error>
+pub fn parse<'a, I>(tokens: &mut Peekable<I>) -> Result<Expr<'a>, Error>
 where
     I: Iterator<Item = (TokenKind, Span<'a>)>,
 {
@@ -67,6 +67,13 @@ where
             Some(&(TokenKind::Integer, span)) => {
                 tokens.next();
                 lhs = Expr::Apply(Box::new((lhs, Expr::Integer(span))));
+                continue;
+            }
+            Some((TokenKind::OpenParen, _)) => {
+                tokens.next();
+                let rhs = parse_with_power(tokens, 0)?;
+                assert!(matches!(tokens.next(), Some((TokenKind::CloseParen, _))));
+                lhs = Expr::Apply(Box::new((lhs, rhs)));
                 continue;
             }
             t => todo!("handle {t:?}"),
@@ -206,5 +213,23 @@ mod tests {
             ))),
             Expr::Integer(Span::new(0, 13, "10"))),
         )),
+    }
+
+    example! {
+        parenthesized_argument,
+        [
+            (TokenKind::Ident, Span::new(0, 12, "f")),
+            (TokenKind::OpenParen, Span::new(0, 14, "(")),
+            (TokenKind::Ident, Span::new(0, 15, "f")),
+            (TokenKind::Ident, Span::new(0, 17, "x")),
+            (TokenKind::CloseParen, Span::new(0, 18, ")")),
+        ],
+        Expr::Apply(Box::new((
+            Expr::Ident(Span::new(0, 12, "f")),
+            Expr::Apply(Box::new((
+                Expr::Ident(Span::new(0, 15, "f")),
+                Expr::Ident(Span::new(0, 17, "x")),
+            ))),
+        ))),
     }
 }
