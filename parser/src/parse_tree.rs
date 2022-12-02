@@ -27,7 +27,7 @@ pub enum Expr<'a> {
 }
 
 impl<'a> Expr<'a> {
-    pub fn parse<I>(tokens: &mut Peekable<I>) -> Result<Self, Error>
+    pub fn parse<I>(tokens: &mut Peekable<I>) -> Result<Self, Vec<Error<'a>>>
     where
         I: Iterator<Item = (TokenKind, Span<'a>)>,
     {
@@ -37,7 +37,7 @@ impl<'a> Expr<'a> {
     fn parse_with_power<I>(
         tokens: &mut Peekable<I>,
         minimum_binding_power: u8,
-    ) -> Result<Self, Error>
+    ) -> Result<Self, Vec<Error<'a>>>
     where
         I: Iterator<Item = (TokenKind, Span<'a>)>,
     {
@@ -49,7 +49,8 @@ impl<'a> Expr<'a> {
                 assert!(matches!(tokens.next(), Some((TokenKind::CloseParen, _))));
                 lhs
             }
-            t => todo!("handle {t:?}"),
+            Some((_, span)) => return Err(vec![Error::UnknownExprStart(span)]),
+            None => return Err(vec![Error::EofExpr]),
         };
 
         loop {
@@ -106,26 +107,45 @@ impl<'a> Assignment<'a> {
         Self { name, args, body }
     }
 
-    pub fn parse<I>(tokens: &mut Peekable<I>) -> Result<Self, Error>
+    pub fn parse<I>(tokens: &mut Peekable<I>) -> Result<Self, Vec<Error<'a>>>
     where
         I: Iterator<Item = (TokenKind, Span<'a>)>,
     {
         let name = match tokens.next() {
             Some((TokenKind::Ident, span)) => span,
-            t => todo!("handle {t:?}"),
+            Some((TokenKind::Equals, span)) => {
+                return Err(vec![Error::MissingAssignmentName(span)])
+            }
+            Some((_, span)) => return Err(vec![Error::BadAssignmentName(span)]),
+            None => return Err(vec![Error::EofAssignment]),
         };
 
+        let mut errors = Vec::new();
         let mut args = Vec::new();
 
         loop {
             match tokens.next() {
                 Some((TokenKind::Equals, _)) => break,
                 Some((TokenKind::Ident, span)) => args.push(span),
-                t => todo!("handle {t:?}"),
+                Some((_, span)) => errors.push(Error::UnknownAssignmentArgument(span)),
+                None => {
+                    errors.push(Error::EofAssignmentEquals);
+                    return Err(errors);
+                }
             }
         }
 
-        let body = Expr::parse(tokens).unwrap_or_else(|e| todo!("handle error in body {e:?}"));
+        let body = match Expr::parse(tokens) {
+            Ok(o) => o,
+            Err(e) => {
+                errors.extend(e);
+                return Err(errors);
+            }
+        };
+
+        if !errors.is_empty() {
+            return Err(errors);
+        }
 
         Ok(Assignment::new(name, args, body))
     }
@@ -141,11 +161,12 @@ impl<'a> AssignmentSeq<'a> {
         Self { assignments }
     }
 
-    pub fn parse<I>(tokens: &mut Peekable<I>) -> Result<Self, Error>
+    pub fn parse<I>(tokens: &mut Peekable<I>) -> Result<Self, Vec<Error<'a>>>
     where
         I: Iterator<Item = (TokenKind, Span<'a>)>,
     {
         let mut assignments = Vec::new();
+        let mut errors = Vec::new();
 
         loop {
             if tokens.peek().is_none() {
@@ -154,23 +175,51 @@ impl<'a> AssignmentSeq<'a> {
                 match Assignment::parse(tokens) {
                     Ok(assignment) => {
                         assignments.push(assignment);
-                        assert!(matches!(tokens.next(), Some((TokenKind::Semicolon, _))));
+                        assert!(matches!(
+                            tokens.next(),
+                            None | Some((TokenKind::Semicolon, _))
+                        ));
                     }
-                    Err(e) => todo!("handle {e:?}"),
+                    Err(e) => {
+                        while !matches!(tokens.next(), None | Some((TokenKind::Semicolon, _))) {
+                            // Discard tokens until EOF or `;`.
+                        }
+                        errors.extend(e)
+                    }
                 }
             }
         }
 
-        Ok(Self::new(assignments))
+        if errors.is_empty() {
+            Ok(Self::new(assignments))
+        } else {
+            Err(errors)
+        }
     }
 }
 
-#[derive(Debug)]
-pub enum Error {}
+#[derive(Debug, PartialEq, Eq)]
+pub enum Error<'a> {
+    UnknownExprStart(Span<'a>),
+    EofExpr,
+    EofAssignment,
+    BadAssignmentName(Span<'a>),
+    MissingAssignmentName(Span<'a>),
+    UnknownAssignmentArgument(Span<'a>),
+    EofAssignmentEquals,
+}
+
+impl<'a> std::fmt::Display for Error<'a> {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+impl<'a> std::error::Error for Error<'a> {}
 
 #[cfg(test)]
 mod tests {
-    use super::{Assignment, AssignmentSeq, Expr, Operator};
+    use super::{Assignment, AssignmentSeq, Error, Expr, Operator};
     use lexer::{Span, TokenKind};
 
     macro_rules! example {
@@ -182,6 +231,28 @@ mod tests {
                     .peekable();
                 let expected = $expected;
                 let actual = <$type>::parse(&mut input).unwrap();
+                assert_eq!(expected, actual);
+            }
+        };
+    }
+
+    macro_rules! error_example {
+        (
+            $name:ident,
+            $type:ty,
+            [ $($input:expr),* $(,)? ],
+            [ $($expected:expr),* $(,)? ],
+            $(,)?
+        ) => {
+            #[test]
+            fn $name() {
+                let mut input = [$($input),*]
+                    .into_iter()
+                    .peekable();
+                let expected: Vec<_> = [$($expected),*]
+                    .into_iter()
+                    .collect();
+                let actual = <$type>::parse(&mut input).unwrap_err();
                 assert_eq!(expected, actual);
             }
         };
@@ -456,5 +527,182 @@ mod tests {
                 ))),
             ),
         ]),
+    }
+
+    error_example! {
+        bad_expression_start,
+        Expr,
+        [
+            (TokenKind::Slash, Span::new(0, 0, "/")),
+        ],
+        [Error::UnknownExprStart(Span::new(0, 0, "/"))],
+    }
+
+    error_example! {
+        eof_in_expression,
+        Expr,
+        [],
+        [Error::EofExpr],
+    }
+
+    error_example! {
+        eof_at_assignment_start,
+        Assignment,
+        [],
+        [Error::EofAssignment],
+    }
+
+    error_example! {
+        bad_assignment_name,
+        Assignment,
+        [
+            (TokenKind::Integer, Span::new(0, 0, "4")),
+            (TokenKind::Equals, Span::new(0, 2, "=")),
+            (TokenKind::Integer, Span::new(0, 4, "13")),
+            (TokenKind::Semicolon, Span::new(0, 6, ";")),
+        ],
+        [Error::BadAssignmentName(Span::new(0, 0, "4"))],
+    }
+
+    error_example! {
+        missing_assignment_name,
+        Assignment,
+        [
+            (TokenKind::Equals, Span::new(0, 0, "=")),
+            (TokenKind::Integer, Span::new(0, 2, "13")),
+            (TokenKind::Semicolon, Span::new(0, 4, ";")),
+        ],
+        [Error::MissingAssignmentName(Span::new(0, 0, "="))],
+    }
+
+    error_example! {
+        bad_assignment_arguments,
+        Assignment,
+        [
+            (TokenKind::Ident, Span::new(0, 0, "function")),
+            (TokenKind::Unknown, Span::new(0, 9, "@")),
+            (TokenKind::Equals, Span::new(0, 11, "=")),
+            (TokenKind::Integer, Span::new(0, 13, "13")),
+            (TokenKind::Semicolon, Span::new(0, 15, ";")),
+        ],
+        [Error::UnknownAssignmentArgument(Span::new(0, 9, "@"))],
+    }
+
+    error_example! {
+        multiple_bad_assignment_arguments,
+        Assignment,
+        [
+            (TokenKind::Ident, Span::new(0, 0, "function")),
+            (TokenKind::Unknown, Span::new(0, 9, "@")),
+            (TokenKind::Integer, Span::new(0, 11, "5")),
+            (TokenKind::Equals, Span::new(0, 13, "=")),
+            (TokenKind::Integer, Span::new(0, 15, "13")),
+            (TokenKind::Semicolon, Span::new(0, 17, ";")),
+        ],
+        [
+            Error::UnknownAssignmentArgument(Span::new(0, 9, "@")),
+            Error::UnknownAssignmentArgument(Span::new(0, 11, "5")),
+        ],
+    }
+
+    error_example! {
+        missing_assignment_equals,
+        Assignment,
+        [
+            (TokenKind::Ident, Span::new(0, 0, "function")),
+        ],
+        [Error::EofAssignmentEquals],
+    }
+
+    error_example! {
+        bad_assignment_body,
+        Assignment,
+        [
+            (TokenKind::Ident, Span::new(0, 0, "f")),
+            (TokenKind::Equals, Span::new(0, 2, "=")),
+            (TokenKind::Slash, Span::new(0, 4, "/")),
+            (TokenKind::Semicolon, Span::new(0, 5, ";")),
+        ],
+        [Error::UnknownExprStart(Span::new(0, 4, "/"))],
+    }
+
+    error_example! {
+        bad_assignment_body_and_args,
+        Assignment,
+        [
+            (TokenKind::Ident, Span::new(0, 0, "f")),
+            (TokenKind::Unknown, Span::new(0, 2, "@")),
+            (TokenKind::Equals, Span::new(0, 4, "=")),
+            (TokenKind::Unknown, Span::new(0, 6, "%")),
+            (TokenKind::Semicolon, Span::new(0, 7, ";")),
+        ],
+        [
+            Error::UnknownAssignmentArgument(Span::new(0, 2, "@")),
+            Error::UnknownExprStart(Span::new(0, 6, "%")),
+        ],
+    }
+
+    error_example! {
+        single_bad_assignment,
+        AssignmentSeq,
+        [
+            (TokenKind::Integer, Span::new(0, 0, "4")),
+            (TokenKind::Equals, Span::new(0, 2, "=")),
+            (TokenKind::Integer, Span::new(0, 4, "13")),
+            (TokenKind::Semicolon, Span::new(0, 6, ";")),
+        ],
+        [Error::BadAssignmentName(Span::new(0, 0, "4"))],
+    }
+
+    error_example! {
+        multiple_bad_assignments,
+        AssignmentSeq,
+        [
+            (TokenKind::Integer, Span::new(0, 0, "4")),
+            (TokenKind::Equals, Span::new(0, 2, "=")),
+            (TokenKind::Integer, Span::new(0, 4, "13")),
+            (TokenKind::Semicolon, Span::new(0, 6, ";")),
+            (TokenKind::Integer, Span::new(1, 0, "4")),
+            (TokenKind::Equals, Span::new(1, 2, "=")),
+            (TokenKind::Integer, Span::new(1, 4, "13")),
+            (TokenKind::Semicolon, Span::new(1, 6, ";")),
+        ],
+        [
+            Error::BadAssignmentName(Span::new(0, 0, "4")),
+            Error::BadAssignmentName(Span::new(1, 0, "4")),
+        ],
+    }
+
+    error_example! {
+        bad_assignments_with_eof,
+        AssignmentSeq,
+        [
+            (TokenKind::Integer, Span::new(0, 0, "4")),
+            (TokenKind::Equals, Span::new(0, 2, "=")),
+            (TokenKind::Integer, Span::new(0, 4, "13")),
+            (TokenKind::Semicolon, Span::new(0, 6, ";")),
+            (TokenKind::Integer, Span::new(1, 0, "4")),
+        ],
+        [
+            Error::BadAssignmentName(Span::new(0, 0, "4")),
+            Error::BadAssignmentName(Span::new(1, 0, "4")),
+        ],
+    }
+
+    example! {
+        accept_no_terminating_semicolon,
+        AssignmentSeq,
+        [
+            (TokenKind::Ident, Span::new(0, 0, "main")),
+            (TokenKind::Equals, Span::new(0, 5, "=")),
+            (TokenKind::Integer, Span::new(0, 7, "0")),
+        ],
+        AssignmentSeq::new(vec![
+            Assignment::new(
+                Span::new(0, 0, "main"),
+                Vec::new(),
+                Expr::Integer(Span::new(0, 7, "0")),
+            ),
+        ])
     }
 }
