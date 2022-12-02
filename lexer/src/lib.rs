@@ -97,11 +97,12 @@ impl<'a> Span<'a> {
 }
 
 /// An iterator over the tokens of an input string.
-pub fn lex(input: &str) -> impl Iterator<Item = (TokenKind, Span)> + '_ {
+pub fn lex(input: &str) -> Tokens {
     Tokens::new(input)
 }
 
-struct Tokens<'a> {
+/// An iterator over a string which produces tokens
+pub struct Tokens<'a> {
     input: &'a str,
     line: u32,
     column: u32,

@@ -3,6 +3,7 @@ members = [
     "driver",
     "interpreter",
     "lexer",
+    "parser",
 ]
 
 [profile.release]
