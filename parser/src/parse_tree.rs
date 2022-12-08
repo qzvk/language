@@ -107,6 +107,14 @@ impl<'a> Assignment<'a> {
         Self { name, args, body }
     }
 
+    pub fn name(&self) -> Span<'a> {
+        self.name
+    }
+
+    pub fn into_parts(self) -> (Span<'a>, Vec<Span<'a>>, Expr<'a>) {
+        (self.name, self.args, self.body)
+    }
+
     pub fn parse<I>(tokens: &mut Peekable<I>) -> Result<Self, Vec<Error<'a>>>
     where
         I: Iterator<Item = (TokenKind, Span<'a>)>,
@@ -159,6 +167,14 @@ pub struct AssignmentSeq<'a> {
 impl<'a> AssignmentSeq<'a> {
     pub fn new(assignments: Vec<Assignment<'a>>) -> Self {
         Self { assignments }
+    }
+
+    pub fn assignments(&self) -> &[Assignment<'a>] {
+        &self.assignments
+    }
+
+    pub fn into_assignments(self) -> Vec<Assignment<'a>> {
+        self.assignments
     }
 
     pub fn parse<I>(tokens: &mut Peekable<I>) -> Result<Self, Vec<Error<'a>>>

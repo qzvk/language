@@ -3,21 +3,22 @@
 
 //! Parser crate for the interpreter. Converts token iterator into an abstract syntax tree.
 
+mod ast;
 mod parse_tree;
 
-pub use parse_tree::Error as SyntaxError;
+pub use crate::{ast::Ast, ast::Error as SemanticError, parse_tree::Error as SyntaxError};
 
 use crate::parse_tree::AssignmentSeq;
 use lexer::Tokens;
 
-/// An abstract syntax tree
-pub struct Ast {}
-
 /// An error encountered during parsing
 #[derive(Debug)]
 pub enum Error<'a> {
-    /// One or more issues were found with the syntax of the input.
+    /// One or more issues were found with the syntax of the input
     Syntax(Vec<SyntaxError<'a>>),
+
+    /// One or more issue were found with the semantics of the input
+    Semantic(Vec<SemanticError>),
 }
 
 impl<'a> From<Vec<SyntaxError<'a>>> for Error<'a> {
@@ -26,10 +27,22 @@ impl<'a> From<Vec<SyntaxError<'a>>> for Error<'a> {
     }
 }
 
+impl<'a> From<Vec<SemanticError>> for Error<'a> {
+    fn from(errors: Vec<SemanticError>) -> Self {
+        Self::Semantic(errors)
+    }
+}
+
 impl<'a> std::fmt::Display for Error<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::Syntax(errors) => {
+                for error in errors {
+                    error.fmt(f)?;
+                }
+                Ok(())
+            }
+            Error::Semantic(errors) => {
                 for error in errors {
                     error.fmt(f)?;
                 }
@@ -45,8 +58,7 @@ impl<'a> std::error::Error for Error<'a> {}
 pub fn parse(tokens: Tokens) -> Result<Ast, Error> {
     let mut tokens = tokens.peekable();
     let parse_tree = AssignmentSeq::parse(&mut tokens)?;
+    let ast = Ast::from_assignment_seq(parse_tree)?;
 
-    println!("{parse_tree:#?}");
-
-    todo!()
+    Ok(ast)
 }
