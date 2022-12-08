@@ -16,18 +16,32 @@ impl<'a> Ast<'a> {
             function_names.push(assignment.name());
         }
 
+        if function_names.is_empty() {
+            return Err(vec![Error::EmptyInput]);
+        }
+
         let mut functions = HashMap::new();
+        let mut errors = Vec::new();
 
         for assignment in tree.into_assignments() {
             let (name, args, body) = assignment.into_parts();
 
             let name = name.source();
-            let expr = Expr::from_expr(body, &args, &function_names).unwrap();
-
-            functions.insert(name, expr);
+            match Expr::from_expr(body, &args, &function_names) {
+                Ok(body) => {
+                    functions.insert(name, body);
+                }
+                Err(error) => {
+                    errors.extend(error);
+                }
+            }
         }
 
-        Ok(Self::new(functions))
+        if errors.is_empty() {
+            Ok(Self::new(functions))
+        } else {
+            Err(errors)
+        }
     }
 
     /// Create an empty AST
@@ -46,15 +60,18 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn from_expr(
-        expr: ParseExpr,
+    pub fn from_expr<'a>(
+        expr: ParseExpr<'a>,
         arguments: &[Span],
         function_names: &[Span],
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, Vec<Error<'a>>> {
         match expr {
             ParseExpr::Integer(span) => {
-                let value = span.source().parse::<i64>().unwrap_or_else(|_| todo!());
-                Ok(Self::Integer(value))
+                if let Ok(value) = span.source().parse::<i64>() {
+                    Ok(Self::Integer(value))
+                } else {
+                    Err(vec![Error::BadIntegerLiteral(span)])
+                }
             }
 
             ParseExpr::Ident(span) => {
@@ -64,7 +81,7 @@ impl Expr {
                 } else if let Some(id) = arguments.iter().position(|n| n.source() == value) {
                     Ok(Self::Argument(ArgumentId(id as u32)))
                 } else {
-                    todo!("identifier which is neither argument nor function")
+                    Err(vec![Error::UnknownIdent(span)])
                 }
             }
 
@@ -72,23 +89,37 @@ impl Expr {
                 let (a, b) = *children;
 
                 let first = Self::operator(op);
-                let second =
-                    Self::from_expr(a, arguments, function_names).unwrap_or_else(|_| todo!());
-                let third =
-                    Self::from_expr(b, arguments, function_names).unwrap_or_else(|_| todo!());
+                let second = Self::from_expr(a, arguments, function_names);
+                let third = Self::from_expr(b, arguments, function_names);
 
-                Ok(Self::apply(Self::apply(first, second), third))
+                match (second, third) {
+                    (Ok(s), Ok(t)) => Ok(Self::apply(Self::apply(first, s), t)),
+
+                    (Ok(_), Err(error)) | (Err(error), Ok(_)) => Err(error),
+
+                    (Err(mut errors), Err(more_errors)) => {
+                        errors.extend(more_errors);
+                        Err(errors)
+                    }
+                }
             }
 
             ParseExpr::Apply(boxed_info) => {
                 let (left, right) = *boxed_info;
 
-                let left =
-                    Self::from_expr(left, arguments, function_names).unwrap_or_else(|_| todo!());
-                let right =
-                    Self::from_expr(right, arguments, function_names).unwrap_or_else(|_| todo!());
+                let left = Self::from_expr(left, arguments, function_names);
+                let right = Self::from_expr(right, arguments, function_names);
 
-                Ok(Self::apply(left, right))
+                match (left, right) {
+                    (Ok(l), Ok(r)) => Ok(Self::apply(l, r)),
+
+                    (Ok(_), Err(errors)) | (Err(errors), Ok(_)) => Err(errors),
+
+                    (Err(mut errors), Err(more_errors)) => {
+                        errors.extend(more_errors);
+                        Err(errors)
+                    }
+                }
             }
         }
     }
@@ -129,20 +160,47 @@ impl Builtin {
 }
 
 /// An error encountered during AST generation
-#[derive(Debug)]
-pub struct Error {}
+#[derive(Debug, PartialEq, Eq)]
+pub enum Error<'a> {
+    /// The input was empty
+    EmptyInput,
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Ok(())
+    /// Integer literal could not be parsed, likely because it was too large
+    BadIntegerLiteral(Span<'a>),
+
+    /// An identifier which is not a function name or argument
+    UnknownIdent(Span<'a>),
+}
+
+impl<'a> std::fmt::Display for Error<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::EmptyInput => f.write_str("error: the input was empty\n"),
+
+            Error::BadIntegerLiteral(span) => writeln!(
+                f,
+                "{}:{}: error: integer literal {} is too large",
+                span.line() + 1,
+                span.column() + 1,
+                span.source(),
+            ),
+
+            Error::UnknownIdent(span) => writeln!(
+                f,
+                "{}:{}: error: unknown identifier {:?}",
+                span.line() + 1,
+                span.column() + 1,
+                span.source(),
+            ),
+        }
     }
 }
 
-impl std::error::Error for Error {}
+impl<'a> std::error::Error for Error<'a> {}
 
 #[cfg(test)]
 mod tests {
-    use super::{AssignmentSeq, Ast, Builtin, Expr, FunctionId};
+    use super::{AssignmentSeq, Ast, Builtin, Error, Expr, FunctionId};
     use crate::{
         ast::ArgumentId,
         parse_tree::{Assignment, Expr as PExpr, Operator},
@@ -168,6 +226,19 @@ mod tests {
                 let input: super::AssignmentSeq = $input;
                 let expected: super::Ast = make_ast($expected);
                 let actual: super::Ast = super::Ast::from_assignment_seq(input).unwrap();
+                assert_eq!(expected, actual);
+            }
+        };
+    }
+
+    macro_rules! error_example {
+        ($name:ident, $input:expr, $expected:expr $(,)?) => {
+            #[test]
+            fn $name() {
+                let input: super::AssignmentSeq = $input;
+                let expected: ::std::vec::Vec<super::Error> = Vec::from($expected);
+                let actual: ::std::vec::Vec<super::Error> =
+                    super::Ast::from_assignment_seq(input).unwrap_err();
                 assert_eq!(expected, actual);
             }
         };
@@ -290,6 +361,84 @@ mod tests {
                     Expr::Integer(5),
                 ),
             ),
+        ],
+    }
+
+    error_example! {
+        empty_input,
+        AssignmentSeq::new(Vec::new()),
+        [Error::EmptyInput],
+    }
+
+    // main = 99999999999999999999;
+    error_example! {
+        overlong_integer,
+        AssignmentSeq::new(vec![
+            Assignment::new(
+                Span::new(0, 0, "main"),
+                Vec::new(),
+                PExpr::Integer(Span::new(0, 7, "99999999999999999999")),
+            ),
+        ]),
+        [
+            Error::BadIntegerLiteral(Span::new(0, 7, "99999999999999999999")),
+        ],
+    }
+
+    // main = unknown;
+    error_example! {
+        unknown_identifier,
+        AssignmentSeq::new(vec![
+            Assignment::new(
+                Span::new(0, 0, "main"),
+                Vec::new(),
+                PExpr::Ident(Span::new(0, 7, "unknown")),
+            ),
+        ]),
+        [
+            Error::UnknownIdent(Span::new(0, 7, "unknown")),
+        ],
+    }
+
+    // main = unknown + 99999999999999999999;
+    error_example! {
+        multiple_errors_under_operator,
+        AssignmentSeq::new(vec![
+            Assignment::new(
+                Span::new(0, 0, "main"),
+                Vec::new(),
+                PExpr::Operator(
+                    Operator::Add,
+                    Span::new(0, 15, "+"),
+                    Box::new((
+                        PExpr::Ident(Span::new(0, 7, "unknown")),
+                        PExpr::Integer(Span::new(0, 17, "99999999999999999999")),
+                    ))
+                ),
+            ),
+        ]),
+        [
+            Error::UnknownIdent(Span::new(0, 7, "unknown")),
+            Error::BadIntegerLiteral(Span::new(0, 17, "99999999999999999999")),
+        ],
+    }
+
+    // main = unknown 99999999999999999999;
+    error_example! {
+        multiple_errors_under_application,
+        AssignmentSeq::new(vec![
+            Assignment::new(
+                Span::new(0, 0, "main"),
+                Vec::new(),
+                PExpr::Apply(Box::new((
+                    PExpr::Ident(Span::new(0, 7, "unknown")),
+                    PExpr::Integer(Span::new(0, 15, "99999999999999999999")),
+                ))),
+            ),
+        ]),
+        [
+            Error::UnknownIdent(Span::new(0, 7, "unknown")),
+            Error::BadIntegerLiteral(Span::new(0, 15, "99999999999999999999")),
         ],
     }
 }

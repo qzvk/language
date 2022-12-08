@@ -18,7 +18,7 @@ pub enum Error<'a> {
     Syntax(Vec<SyntaxError<'a>>),
 
     /// One or more issue were found with the semantics of the input
-    Semantic(Vec<SemanticError>),
+    Semantic(Vec<SemanticError<'a>>),
 }
 
 impl<'a> From<Vec<SyntaxError<'a>>> for Error<'a> {
@@ -27,8 +27,8 @@ impl<'a> From<Vec<SyntaxError<'a>>> for Error<'a> {
     }
 }
 
-impl<'a> From<Vec<SemanticError>> for Error<'a> {
-    fn from(errors: Vec<SemanticError>) -> Self {
+impl<'a> From<Vec<SemanticError<'a>>> for Error<'a> {
+    fn from(errors: Vec<SemanticError<'a>>) -> Self {
         Self::Semantic(errors)
     }
 }
