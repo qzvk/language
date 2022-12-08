@@ -5,31 +5,8 @@ mod args;
 use args::Args;
 use std::process::ExitCode;
 
-#[derive(Debug)]
-enum Error {
-    Args(args::Error),
-    Driver(driver::Error),
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::Args(error) => error.fmt(f),
-            Error::Driver(error) => error.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl From<args::Error> for Error {
-    fn from(error: args::Error) -> Self {
-        Error::Args(error)
-    }
-}
-
-fn help() -> Result<(), Error> {
-    version()?;
+fn help() -> ExitCode {
+    version();
     println!(env!("CARGO_PKG_DESCRIPTION"));
     println!();
     println!("USAGE");
@@ -39,44 +16,40 @@ fn help() -> Result<(), Error> {
     println!("    -h --help       Display this help text");
     println!("    -V --version    Print version info and exit");
     println!("    -v --verbose    Display grammar information");
-    Ok(())
+    ExitCode::SUCCESS
 }
 
-fn version() -> Result<(), Error> {
+fn version() -> ExitCode {
     println!(concat!(
         env!("CARGO_PKG_NAME"),
         " ",
         env!("CARGO_PKG_VERSION")
     ));
-    Ok(())
-}
-
-fn run() -> Result<(), Error> {
-    let input_args = std::env::args().skip(1);
-    let args = args::parse(input_args)?;
-
-    match args {
-        Args::Help => help(),
-
-        Args::Version => version(),
-
-        Args::Run {
-            path: None,
-            verbose,
-        } => driver::run_stdin(verbose).map_err(Error::Driver),
-
-        Args::Run {
-            path: Some(path),
-            verbose,
-        } => driver::run_file(path, verbose).map_err(Error::Driver),
-    }
+    ExitCode::SUCCESS
 }
 
 fn main() -> ExitCode {
-    if let Err(error) = run() {
-        eprint!("{error}");
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
+    let input_args = std::env::args().skip(1);
+    let args = args::parse(input_args);
+
+    match args {
+        Ok(Args::Help) => help(),
+
+        Ok(Args::Version) => version(),
+
+        Ok(Args::Run {
+            path: None,
+            verbose,
+        }) => driver::run_stdin(verbose),
+
+        Ok(Args::Run {
+            path: Some(path),
+            verbose,
+        }) => driver::run_file(path, verbose),
+
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
     }
 }
