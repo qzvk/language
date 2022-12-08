@@ -175,7 +175,7 @@ pub enum Error<'a> {
 impl<'a> std::fmt::Display for Error<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::EmptyInput => f.write_str("error: the input was empty\n"),
+            Error::EmptyInput => f.write_str("<eof>: error: the input was empty\n"),
 
             Error::BadIntegerLiteral(span) => writeln!(
                 f,

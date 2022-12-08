@@ -252,18 +252,18 @@ impl<'a> std::fmt::Display for Error<'a> {
             Error::UnknownExprStart(span) => {
                 writeln!(
                     f,
-                    "error: {}:{}: expected an expression, saw {:?}",
+                    "{}:{}: error: expected an expression, saw {:?}",
                     span.line() + 1,
                     span.column() + 1,
                     span.source(),
                 )
             }
-            Error::EofExpr => writeln!(f, "error: expected an expression, saw EOF"),
-            Error::EofAssignment => writeln!(f, "error: expected an assignment, saw EOF"),
+            Error::EofExpr => writeln!(f, "<eof>: error: expected an expression, saw EOF"),
+            Error::EofAssignment => writeln!(f, "<eof>: error: expected an assignment, saw EOF"),
             Error::BadAssignmentName(span) => {
                 writeln!(
                     f,
-                    "error: {}:{}: an assignment's name must be an identifier, saw {:?} instead",
+                    "{}:{}: error:  an assignment's name must be an identifier, saw {:?} instead",
                     span.line() + 1,
                     span.column() + 1,
                     span.source(),
@@ -272,7 +272,7 @@ impl<'a> std::fmt::Display for Error<'a> {
             Error::MissingAssignmentName(span) => {
                 writeln!(
                     f,
-                    "error: {}:{}: expected an assignment's name, saw {:?} instead",
+                    "{}:{}: error: expected an assignment's name, saw {:?} instead",
                     span.line() + 1,
                     span.column() + 1,
                     span.source(),
@@ -281,13 +281,13 @@ impl<'a> std::fmt::Display for Error<'a> {
             Error::UnknownAssignmentArgument(span) => {
                 writeln!(
                     f,
-                    "error: {}:{}: argument names must be identifiers, saw {:?} instead",
+                    "{}:{}: error: argument names must be identifiers, saw {:?} instead",
                     span.line() + 1,
                     span.column() + 1,
                     span.source(),
                 )
             }
-            Error::EofAssignmentEquals => writeln!(f, "error: expected an '=', saw EOF"),
+            Error::EofAssignmentEquals => writeln!(f, "<eof>: error: expected an '=', saw EOF"),
 
             Error::MissingSemicolon(span) => writeln!(
                 f,
