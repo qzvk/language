@@ -191,10 +191,14 @@ impl<'a> AssignmentSeq<'a> {
                 match Assignment::parse(tokens) {
                     Ok(assignment) => {
                         assignments.push(assignment);
-                        assert!(matches!(
-                            tokens.next(),
-                            None | Some((TokenKind::Semicolon, _))
-                        ));
+
+                        match tokens.next() {
+                            None | Some((TokenKind::Semicolon, _)) => {}
+                            Some((_, span)) => {
+                                // If its not a semicolon, that's an error.
+                                errors.push(Error::MissingSemicolon(span));
+                            }
+                        }
                     }
                     Err(e) => {
                         while !matches!(tokens.next(), None | Some((TokenKind::Semicolon, _))) {
@@ -225,6 +229,9 @@ pub enum Error<'a> {
 
     /// Expected an assignment, saw EOF
     EofAssignment,
+
+    /// Expected a semicolon after an assignment
+    MissingSemicolon(Span<'a>),
 
     /// An assignment name was not an identifier
     BadAssignmentName(Span<'a>),
@@ -281,6 +288,14 @@ impl<'a> std::fmt::Display for Error<'a> {
                 )
             }
             Error::EofAssignmentEquals => writeln!(f, "error: expected an '=', saw EOF"),
+
+            Error::MissingSemicolon(span) => writeln!(
+                f,
+                "{}:{}: error: expected a ';', saw {:?}",
+                span.line(),
+                span.column(),
+                span.source()
+            ),
         }
     }
 }
@@ -774,5 +789,22 @@ mod tests {
                 Expr::Integer(Span::new(0, 7, "0")),
             ),
         ])
+    }
+
+    error_example! {
+        missing_semicolon,
+        AssignmentSeq,
+        [
+            (TokenKind::Ident, Span::new(0, 0, "a")),
+            (TokenKind::Equals, Span::new(0, 2, "=")),
+            (TokenKind::Ident, Span::new(0, 4, "b")),
+            (TokenKind::Ident, Span::new(1, 0, "c")),
+            (TokenKind::Equals, Span::new(1, 2, "=")),
+            (TokenKind::Ident, Span::new(1, 4, "d")),
+        ],
+        [
+            Error::MissingSemicolon(Span::new(1, 2, "=")),
+            Error::EofAssignmentEquals,
+        ],
     }
 }
