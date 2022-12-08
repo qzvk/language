@@ -91,7 +91,7 @@ impl<'a> Span<'a> {
     }
 
     /// The underlying string of a token
-    pub fn source(&self) -> &str {
+    pub fn source(&self) -> &'a str {
         self.source
     }
 }
