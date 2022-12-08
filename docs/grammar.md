@@ -1,39 +1,28 @@
-The grammar of the language described in McKeeman form:
+# Summary
+
+A string in the language is parsed as a sequence of function definitions, separated by semicolons. The string may be terminated by a semicolon.
+
+A function definition consists of a head and body, with an equals in between. A function head consists of an identifier - the name of the function - followed by zero or more additional identifiers - the function arguments. A function body is an expression. Accepted expressions are:
+- Argument names (eg. `x`)
+- Function names (eg. `map`)
+- Integers (eg. `1234`)
+- Basic operators (ie. `+`, `-`, `/`, `*`)
+- Parentheses (eg. `(2 * 4)`)
+- Application (eg. `f a b`)
+
+# Examples
 
 ```
-start
-    assignment-seq
+main = 4;
+```
 
-assignment-seq
-    assignment
-    assignment ';' assignment-seq
+```
+square n = n * n;
+main = square 5
+```
 
-assignment
-    apply-expr '=' add-expr
-    add-expr
-
-add-expr
-    add-expr add-op mul-expr
-    mul-expr
-
-mul-expr
-    mul-expr mul-op apply-expr
-    apply-expr
-
-apply-expr
-    apply-expr unary-expr
-    unary-expr
-
-unary-expr
-    '(' add-expr ')'
-    integer
-    ident
-
-add-op
-    '+'
-    '-'
-
-mul-op
-    '*'
-    '/'
+```
+twice f x = f (f x);
+double n = n * 2;
+main = twice double 4;
 ```
