@@ -292,8 +292,8 @@ impl<'a> std::fmt::Display for Error<'a> {
             Error::MissingSemicolon(span) => writeln!(
                 f,
                 "{}:{}: error: expected a ';', saw {:?}",
-                span.line(),
-                span.column(),
+                span.line() + 1,
+                span.column() + 1,
                 span.source()
             ),
         }
