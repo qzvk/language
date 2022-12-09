@@ -9,7 +9,7 @@ use std::{iter::Peekable, str::CharIndices};
 /// A kind of token. The syntactic function of a token.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TokenKind {
-    /// The ';'' character
+    /// The ';' character
     Semicolon,
 
     /// The '=' character
@@ -40,7 +40,7 @@ pub enum TokenKind {
     /// An integer (one or more digits)
     Integer,
 
-    /// An unkown token.
+    /// An unknown token.
     Unknown,
 }
 
