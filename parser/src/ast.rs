@@ -152,6 +152,7 @@ impl Expr {
     }
 }
 
+/// An ID used to uniquely identify a defined function.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FunctionId(u32);
 

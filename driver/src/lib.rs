@@ -5,6 +5,8 @@
 
 use std::{io::Read, process::ExitCode};
 
+use ir::Ir;
+
 /// Run the interpreter from a file at `path`
 pub fn run_file(path: String, verbose: bool) -> ExitCode {
     match std::fs::read_to_string(&path) {
@@ -34,16 +36,24 @@ pub fn run_stdin(verbose: bool) -> ExitCode {
 fn run_string(input: String, _verbose: bool) -> ExitCode {
     let tokens = lexer::lex(&input);
 
-    match parser::parse(tokens) {
-        Ok(ast) => {
-            println!("{ast:?}");
-
-            ExitCode::SUCCESS
-        }
-
+    let ast = match parser::parse(tokens) {
+        Ok(ast) => ast,
         Err(errors) => {
             eprintln!("{errors}");
-            ExitCode::FAILURE
+            return ExitCode::FAILURE;
         }
-    }
+    };
+
+    let ir = match Ir::new(ast) {
+        Ok(ir) => ir,
+        Err(_error) => todo!(),
+    };
+
+    let value = match ir::evaluate(ir) {
+        Ok(value) => value,
+        Err(_error) => todo!(),
+    };
+
+    println!("{value}");
+    ExitCode::SUCCESS
 }

@@ -6,6 +6,7 @@ version = 3
 name = "driver"
 version = "0.1.0"
 dependencies = [
+ "ir",
  "lexer",
  "parser",
 ]
@@ -15,6 +16,14 @@ name = "interpreter"
 version = "0.1.0"
 dependencies = [
  "driver",
+]
+
+[[package]]
+name = "ir"
+version = "0.1.0"
+dependencies = [
+ "lexer",
+ "parser",
 ]
 
 [[package]]

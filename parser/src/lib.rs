@@ -8,7 +8,7 @@ mod parse_tree;
 
 pub use crate::{
     ast::Error as SemanticError,
-    ast::{Ast, Builtin, Expr},
+    ast::{Ast, Builtin, Expr, FunctionId},
     parse_tree::Error as SyntaxError,
 };
 

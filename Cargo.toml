@@ -4,6 +4,7 @@ members = [
     "interpreter",
     "lexer",
     "parser",
+    "ir",
 ]
 
 [profile.release]
