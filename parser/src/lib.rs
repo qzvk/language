@@ -6,7 +6,11 @@
 mod ast;
 mod parse_tree;
 
-pub use crate::{ast::Ast, ast::Error as SemanticError, parse_tree::Error as SyntaxError};
+pub use crate::{
+    ast::Error as SemanticError,
+    ast::{Ast, Builtin, Expr},
+    parse_tree::Error as SyntaxError,
+};
 
 use crate::parse_tree::AssignmentSeq;
 use lexer::Tokens;

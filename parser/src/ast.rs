@@ -48,18 +48,34 @@ impl<'a> Ast<'a> {
     pub fn new(functions: HashMap<&'a str, Expr>) -> Self {
         Self { functions }
     }
+
+    /// Get the expression of a function with a given name.
+    pub fn get(&self, name: &str) -> Option<&Expr> {
+        self.functions.get(name)
+    }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+/// An expression within an abstract syntax tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
+    /// An integer expression.
     Integer(i64),
+
+    /// A value which is equivalent to the argument of the containing function.
     Argument(ArgumentId),
+
+    /// A user-defined function name.
     Function(FunctionId),
+
+    /// A builtin function.
     Builtin(Builtin),
+
+    /// An application expression.
     Apply(Box<(Self, Self)>),
 }
 
 impl Expr {
+    /// Converts a parse-tree expression into an AST expression.
     pub fn from_expr<'a>(
         expr: ParseExpr<'a>,
         arguments: &[Span],
@@ -124,11 +140,13 @@ impl Expr {
         }
     }
 
+    /// Create an operator expression.
     pub fn operator(operator: Operator) -> Self {
         let builtin = Builtin::from_operator(operator);
         Self::Builtin(builtin)
     }
 
+    /// Create an apply expression.
     pub fn apply(left: Self, right: Self) -> Self {
         Self::Apply(Box::new((left, right)))
     }
@@ -140,15 +158,24 @@ pub struct FunctionId(u32);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ArgumentId(u32);
 
+/// A built-in function.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Builtin {
+    /// Binary integer addition.
     Add,
+
+    /// Binary integer subtraction.
     Subtract,
+
+    /// Binary integer multiply.
     Multiply,
+
+    /// Binary integer division.
     Divide,
 }
 
 impl Builtin {
+    /// Convert an operator into its corresponding built-in function.
     pub fn from_operator(op: Operator) -> Self {
         match op {
             Operator::Add => Self::Add,
